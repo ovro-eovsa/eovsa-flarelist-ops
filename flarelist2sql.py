@@ -28,13 +28,64 @@ from astropy.time import Time
 import mysql.connector
 from datetime import datetime
 
-warnings.filterwarnings("ignore", category=MatplotlibDeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+
+# Global settings and initializations
+EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
+
+
+def create_flare_db_connection():
+    return mysql.connector.connect(
+        host=os.getenv('FLARE_DB_HOST'),
+        database=os.getenv('FLARE_DB_DATABASE'),
+        user=os.getenv('FLARE_DB_USER'),
+        password=os.getenv('FLARE_DB_PASSWORD')
+    )
+
+
+def create_flare_lc_db_connection():
+    return mysql.connector.connect(
+        host=os.getenv('FLARE_DB_HOST'),
+        database=os.getenv('FLARE_LC_DB_DATABASE'),
+        user=os.getenv('FLARE_DB_USER'),
+        password=os.getenv('FLARE_DB_PASSWORD')
+    )
+
+
+##============= bad data
+bad_data = ['EOVSA_20221013_M1flare.dat',
+            'EOVSA_20230427_Cflare.dat',
+            'EOVSA_20230429_Cflare.dat',
+            'EOVSA_20230508_C9flare.dat',
+            'EOVSA_20230520_M56flare.dat']
+
+bad_data_mark = ['2022-10-13 00:10:00',
+                 '2023-04-27 01:00:00',
+                 '2023-04-29 23:02:00',
+                 '2023-05-08 14:19:00',
+                 '2023-05-20 14:58:00']
+
+## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
+datfile_urls = [
+    "http://ovsa.njit.edu/events/2019/",
+    "http://ovsa.njit.edu/events/2021/",
+    "http://ovsa.njit.edu/events/2022/",
+    "http://ovsa.njit.edu/events/2023/",
+    "http://ovsa.njit.edu/events/2024/"
+]
+
+## plotting config
+
+fontsize_pl = 14.
+window_size = 10
+
+# Path to the folder containing the static images
 
 static_img_folder = '/var/www/html/flarelist/static/images/'
 
 # Target height for all logos
-fig_dpi = 150
-target_height = 60  # Adjust this value as needed
+FIG_DPI = 150
+LOGO_HEIGHT = 60  # Adjust this value as needed
 
 
 # Load and resize logos
@@ -76,9 +127,9 @@ def add_logos_horizontally(fig, dpi, logos, gap=4, right_offset=200, top_offset=
 
 
 # Load the logo images
-nsf_logo = load_and_resize_logo(os.path.join(static_img_folder, 'NSF_logo.png'), target_height)
-njit_logo = load_and_resize_logo(os.path.join(static_img_folder, 'njit-logo.png'), target_height)
-eovsa_logo = load_and_resize_logo(os.path.join(static_img_folder, 'eovsa_logo.png'), target_height)
+nsf_logo = load_and_resize_logo(os.path.join(static_img_folder, 'NSF_logo.png'), LOGO_HEIGHT)
+njit_logo = load_and_resize_logo(os.path.join(static_img_folder, 'njit-logo.png'), LOGO_HEIGHT)
+eovsa_logo = load_and_resize_logo(os.path.join(static_img_folder, 'eovsa_logo.png'), LOGO_HEIGHT)
 logos = [eovsa_logo, nsf_logo, njit_logo]
 
 
@@ -205,7 +256,7 @@ def get_flare_info_from_GOES(tpeak_str):
     return GOES_class, GOES_tstart, GOES_tpeak, GOES_tend, GOES_hgc_x, GOES_hgc_y
 
 
-def download_datfiles_from_url(url, download_directory, given_date):
+def download_datfiles_from_url(url, download_directory, timerange):
     # Send an HTTP GET request to the webpage
     response = requests.get(url)
     file_name_download = []
@@ -228,7 +279,6 @@ def download_datfiles_from_url(url, download_directory, given_date):
 
                 # Get the file name from the URL
                 file_name = os.path.basename(href)
-                match = re.match(r'EOVSA_(\d{4})(\d{2})(\d{2})', file_name)
                 match = re.match(r'(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', file_name)
 
                 # Check if the file name matches the given date range pattern
@@ -236,8 +286,8 @@ def download_datfiles_from_url(url, download_directory, given_date):
                     file_date = match.group(1) + '-' + match.group(2) + '-' + match.group(3)
 
                     # Check if the file date is within the given date range
-                    if timerange_strp[0].strftime('%Y-%m-%d') <= file_date <= (
-                            timerange_strp[1] + timedelta(days=1)).strftime('%Y-%m-%d'):
+                    if timerange[0].strftime('%Y-%m-%d') <= file_date <= (
+                            timerange[1] + timedelta(days=1)).strftime('%Y-%m-%d'):
                         # Download the file
                         if os.path.exists(os.path.join(download_directory, file_name)):
                             print(f"Exist: {file_name}")
@@ -361,40 +411,6 @@ def main():
 
     print(f"Fetching data for time range {timerange[0]} to {timerange[1]} with manual mode set to {do_manu}")
 
-    # Global settings and initializations
-    eo_wiki_url = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
-
-    # timerange = ['2024-02-23 22:00:00', '2024-03-05 00:00:00']
-    # timerange_strp = [datetime.strptime(date, '%Y-%m-%d %H:%M:%S') for date in timerange]
-    # do_manu = 0  ##manually determine the start/end time of the radio burst by clicking on the Dspec
-
-    ##============= bad data
-    bad_data = ['EOVSA_20221013_M1flare.dat',
-                'EOVSA_20230427_Cflare.dat',
-                'EOVSA_20230429_Cflare.dat',
-                'EOVSA_20230508_C9flare.dat',
-                'EOVSA_20230520_M56flare.dat']
-
-    bad_data_mark = ['2022-10-13 00:10:00',
-                     '2023-04-27 01:00:00',
-                     '2023-04-29 23:02:00',
-                     '2023-05-08 14:19:00',
-                     '2023-05-20 14:58:00']
-
-    ## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
-    datfile_urls = [
-        "http://ovsa.njit.edu/events/2019/",
-        "http://ovsa.njit.edu/events/2021/",
-        "http://ovsa.njit.edu/events/2022/",
-        "http://ovsa.njit.edu/events/2023/",
-        "http://ovsa.njit.edu/events/2024/"
-    ]
-
-    ## plotting config
-
-    fontsize_pl = 14.
-    window_size = 10
-
     hostname = socket.gethostname()
 
     timenow = datetime.now().strftime('%Y%m%dT%H%M%S')
@@ -411,7 +427,7 @@ def main():
 
     print("##=============Step 1: capture the radio peak times from flare list wiki webpage")
     init_csv = os.path.join(work_dir, "get_time_from_wiki_given_date.csv")
-    fetch_flare_data_from_wiki(eo_wiki_url, timerange_strp, init_csv)
+    fetch_flare_data_from_wiki(EO_WIKI_URL, timerange_strp, init_csv)
 
     print("##=============Step 2: reformate the date and time")
     # Read the initial CSV file
@@ -630,7 +646,9 @@ def main():
 
         time_pk = time_spec[int(np.median(np.array(tpk_tot_ind)))]
 
-        tpk_spec_wiki.append(Time(time_pk, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
+        time_pk_obj = Time(time_pk, format='jd')
+
+        tpk_spec_wiki.append(time_pk_obj.strftime('%Y-%m-%d %H:%M:%S'))
 
         tst_mad_spec_wiki.append(Time(time_st_mad, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
         ted_mad_spec_wiki.append(Time(time_ed_mad, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
@@ -645,7 +663,8 @@ def main():
         spec_plt[spec_plt < 0] = 0.01
 
         # drange = [1,np.max(spec_plt)]#np.max(spec_plt)
-        drange = [0.01, 10]  # np.max(spec_plt)
+        # drange = [0.01, 10]  # np.max(spec_plt)
+        drange = [0.01, np.percentile(spec_plt, 97.5)]
 
         if do_manu == 1:
             #####==================================================
@@ -661,7 +680,7 @@ def main():
             freq_pl_tot = [2., 4., 6., 8., 10., 12.]  #
             # freq_pl_tot = [3.,5.,7.,9.,11,14.]#
 
-            cmap_flux = matplotlib.cm.get_cmap("jet", len(freq_pl_tot))  # 13 autumn_r
+            cmap_flux = matplotlib.colormaps.get_cmap("jet")
 
             for ff, freq_pl_temp in enumerate(freq_pl_tot):
                 freq_pl_ind = np.argmin(np.abs(freq_plt - freq_pl_temp))
@@ -746,7 +765,7 @@ def main():
         freq_pl_tot = [2., 4., 6., 8., 10., 12.]  #
         # freq_pl_tot=[3.,5.,7.,9.,11,14.]#
 
-        cmap_flux = matplotlib.cm.get_cmap("jet", len(freq_pl_tot))  # 13 autumn_r
+        cmap_flux = matplotlib.colormaps.get_cmap("jet")
 
         for ff, freq_pl_temp in enumerate(freq_pl_tot):
             freq_pl_ind = np.argmin(np.abs(freq_plt - freq_pl_temp))
@@ -779,12 +798,12 @@ def main():
 
         ## add logos
         try:
-            add_logos_horizontally(fig, fig_dpi, logos, gap=4, right_offset=200, top_offset=30)
+            add_logos_horizontally(fig, FIG_DPI, logos, gap=4, right_offset=200, top_offset=30)
         except:
             print('Failed to add logos. Proceed')
         #####==================================================
-        figname = os.path.join(spec_data_dir, filename[0:4], f"eovsa.spec.flare_id_{filename}.png")
-        fig.savefig(figname, dpi=fig_dpi, transparent=False)
+        figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"eovsa.spec.flare_id_{filename}.png")
+        fig.savefig(figname, dpi=FIG_DPI, transparent=False)
         plt.close()
         print(f'Write spectrogram to {figname}')
 
@@ -861,12 +880,7 @@ def main():
 
     ##=============get flare_id_exist from mySQL
 
-    connection = mysql.connector.connect(
-        host=os.getenv('FLARE_DB_HOST'),
-        database=os.getenv('FLARE_DB_DATABASE'),
-        user=os.getenv('FLARE_DB_USER'),
-        password=os.getenv('FLARE_DB_PASSWORD')
-    )
+    connection = create_flare_db_connection()
 
     cursor = connection.cursor()
     cursor.execute("SELECT Flare_ID FROM EOVSA_flare_list_wiki_tb")
@@ -878,11 +892,7 @@ def main():
     ##=============
 
     # Connect to the database and get a cursor to access it:
-    cnxn = mysql.connector.connect(
-        user=os.getenv('FLARE_DB_USER'),
-        passwd=os.getenv('FLARE_DB_PASSWORD'),
-        host=os.getenv('FLARE_DB_HOST'),
-        database=os.getenv('FLARE_DB_DATABASE'))
+    cnxn = create_flare_lc_db_connection()
 
     cursor = cnxn.cursor()
     table = 'EOVSA_flare_list_wiki_tb'
@@ -934,12 +944,7 @@ def main():
 
     ##=============get flare_id_exist from mySQL
 
-    connection = mysql.connector.connect(
-        host=os.getenv('FLARE_DB_HOST'),
-        database=os.getenv('FLARE_LC_DB_DATABASE'),
-        user=os.getenv('FLARE_DB_USER'),
-        password=os.getenv('FLARE_DB_PASSWORD')
-    )
+    connection = create_flare_lc_db_connection()
 
     cursor = connection.cursor()
     cursor.execute("SELECT DISTINCT Flare_ID FROM freq_QL")
@@ -949,11 +954,7 @@ def main():
     connection.close()
 
     # Connect to the database and get a cursor to access it:
-    cnxn = mysql.connector.connect(
-        user=os.getenv('FLARE_DB_USER'),
-        passwd=os.getenv('FLARE_DB_PASSWORD'),
-        host=os.getenv('FLARE_DB_HOST'),
-        database=os.getenv('FLARE_LC_DB_DATABASE'))
+    cnxn = create_flare_lc_db_connection()
 
     #####==================================================data preparation
 
