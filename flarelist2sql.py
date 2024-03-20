@@ -33,7 +33,7 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 # Global settings and initializations
 EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
 
-
+## todo add command line ar for time and frequency input to register a flare event and update the sql.
 def create_flare_db_connection():
     return mysql.connector.connect(
         host=os.getenv('FLARE_DB_HOST'),
