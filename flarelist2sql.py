@@ -27,6 +27,7 @@ import numpy as np
 from astropy.time import Time
 import mysql.connector
 from datetime import datetime
+from astropy.io import fits
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
@@ -127,10 +128,13 @@ def add_logos_horizontally(fig, dpi, logos, gap=4, right_offset=200, top_offset=
 
 
 # Load the logo images
-nsf_logo = load_and_resize_logo(os.path.join(static_img_folder, 'NSF_logo.png'), LOGO_HEIGHT)
-njit_logo = load_and_resize_logo(os.path.join(static_img_folder, 'njit-logo.png'), LOGO_HEIGHT)
-eovsa_logo = load_and_resize_logo(os.path.join(static_img_folder, 'eovsa_logo.png'), LOGO_HEIGHT)
-logos = [eovsa_logo, nsf_logo, njit_logo]
+try:
+    nsf_logo = load_and_resize_logo(os.path.join(static_img_folder, 'NSF_logo.png'), LOGO_HEIGHT)
+    njit_logo = load_and_resize_logo(os.path.join(static_img_folder, 'njit-logo.png'), LOGO_HEIGHT)
+    eovsa_logo = load_and_resize_logo(os.path.join(static_img_folder, 'eovsa_logo.png'), LOGO_HEIGHT)
+    logos = [eovsa_logo, nsf_logo, njit_logo]
+except:
+    logos = ''
 
 
 def fetch_flare_data_from_wiki(eo_wiki_url, given_date_strp, outcsvfile):
@@ -157,6 +161,7 @@ def fetch_flare_data_from_wiki(eo_wiki_url, given_date_strp, outcsvfile):
         time_ut_data = []
         flare_class_data = []
         depec_file = []
+        depec_img = []
 
         for table in tables:
             for row in table.find_all("tr"):
@@ -172,22 +177,37 @@ def fetch_flare_data_from_wiki(eo_wiki_url, given_date_strp, outcsvfile):
                         date_data.append(date)
                         time_ut_data.append(time_ut)
                         flare_class_data.append(flare_class)
-
+                                            
                         depec_file_tmp = ''
                         for cell in cells:
                             link_cell = cell.find('a', class_='external text', href=True, rel='nofollow')
                             if link_cell:
                                 url = link_cell['href']
                                 if url.endswith(".dat"):
-                                    depec_file_tmp = url.split('/')[-1].split('.dat')[0]
+                                    depec_file_tmp = url.split('/')[-1]
+                                elif url.endswith(".fits"):
+                                    depec_file_tmp = url.split('/')[-1]
+                            if depec_file_tmp:  # If a file name has been captured, stop looking further
+                                break
                         depec_file.append(depec_file_tmp)
+
+                        depec_img_tmp = ''
+                        for cell in cells:
+                            if cell.find(class_="thumbimage"):
+                                img_tag = cell.find('img')
+                                if img_tag:
+                                    src_attribute = img_tag.get('src')##'/wiki/images/a/ac/EOVSA_20240212_C5flare.png'                                
+                                    if src_attribute:
+                                        depec_img_tmp = src_attribute.split('/')[-1]
+                        depec_img.append(depec_img_tmp)
 
         data = {
             "ID": np.arange(len(date_data)) + 1,
             "Date": date_data,
             "Time (UT)": time_ut_data,
             "Flare Class": flare_class_data,
-            "depec_file": depec_file
+            "depec_file": depec_file,
+            "depec_img": depec_img
         }
 
         df = pd.DataFrame(data)
@@ -279,7 +299,15 @@ def download_datfiles_from_url(url, download_directory, timerange):
 
                 # Get the file name from the URL
                 file_name = os.path.basename(href)
-                match = re.match(r'(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', file_name)
+                match = None
+
+                if file_name.split('.')[-1] == 'dat':
+                    # print(file_name)
+                    match = re.match(r'EOVSA_(\d{4})(\d{2})(\d{2})', file_name)
+                    if match == None:
+                        match = re.match(r'(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', file_name)
+                if file_name.split('.')[-1] == 'fits':
+                    match = re.match(r'eovsa.spec.flare_id_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', file_name)
 
                 # Check if the file name matches the given date range pattern
                 if match:
@@ -446,7 +474,8 @@ def main():
         "GOES_tend": [],
         # "GOES_hgc_x": [],
         # "GOES_hgc_y": [],
-        "depec_file": []
+        "depec_file": [],
+        "depec_img": []
     }
 
     # Process each row in the DataFrame
@@ -473,6 +502,7 @@ def main():
         # new_data["GOES_hgc_x"].append(GOES_hgc_x_tp)
         # new_data["GOES_hgc_y"].append(GOES_hgc_y_tp)
         new_data["depec_file"].append(str(row["depec_file"]))
+        new_data["depec_img"].append(str(row["depec_img"]))
 
     # Create a new DataFrame from the collected data
     new_df = pd.DataFrame(new_data)
@@ -527,10 +557,10 @@ def main():
     depec_file = df['depec_file']
 
     if on_server == 1:
-        files_wiki = [os.path.join(spec_data_dir, str(flare_id[i])[0:4], f'{str(file_name)}.dat') for i, file_name in
-                      enumerate(depec_file)]
+        files_wiki = [spec_data_dir + str(flare_id[i])[0:4] + "/" + str(file_name) for i, file_name in enumerate(depec_file)]
     else:
-        files_wiki = [os.path.join(spec_data_dir, f'{str(file_name)}.dat') for file_name in depec_file]
+        files_wiki = [os.path.join(spec_data_dir, f'{str(file_name)}') for file_name in depec_file]
+
 
     spec_img_dir = os.path.join(work_dir, 'spec_img/')
     os.makedirs(spec_img_dir, exist_ok=True)
@@ -545,15 +575,23 @@ def main():
     for ww, file_wiki in enumerate(files_wiki):  # len(files_wiki)
 
         filename1 = os.path.basename(file_wiki)
-        filename = filename1.split('.dat')[0]
-        depec_file.append(filename)
+        depec_file.append(filename1)
         print("Spec data: ", filename1)
 
         try:
-            data1 = rd_datfile(file_wiki)
-            time1 = data1['time']
-            fghz = np.array(data1['fghz'])
-            spec = np.array(data1['data'])
+            if filename1.split('.')[-1] == 'dat':
+                filename = filename1.split('.dat')[0]
+                data1 = rd_datfile(file_wiki)
+                spec = np.array(data1['data'])
+                fghz = np.array(data1['fghz'])
+                time1 = data1['time']
+            if filename1.split('.')[-1] == 'fits':
+                filename = filename1.split('.fits')[0]
+                eospecfits = fits.open(file_wiki)
+                spec = eospecfits[0].data # [freq, time]
+                fghz = np.array(eospecfits[1].data['FGHZ']) # in GHz
+                time1 = np.array(eospecfits[2].data['TIME']) # in jd format
+
         except Exception as e:
             temp = datetime.strptime(str(flare_id[ww]), "%Y%m%d%H%M%S")
             temp_st = (temp - timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M:%S")
@@ -817,7 +855,8 @@ def main():
         'EO_tend_manu': ted_manu_spec_wiki,
         'EO_tstart_mad': tst_mad_spec_wiki,
         'EO_tend_mad': ted_mad_spec_wiki,
-        'depec_file': df['depec_file']
+        'depec_file': df['depec_file'],
+        'depec_img': df['depec_img']
     }
 
     df = pd.DataFrame(data_csv)
@@ -844,6 +883,7 @@ def main():
     df_time['EO_tpeak'] = ""
     df_time['EO_tend'] = ""
     df_time['depec_file'] = ""
+    df_time['depec_img'] = ""
 
     # Convert EO_tpeak_dt to the same MJD format for comparison
     df_tst_ted['EO_tpeak_mjd'] = [Time(row, format='datetime').mjd for row in df_tst_ted['EO_tpeak_dt']]
@@ -861,6 +901,7 @@ def main():
         df_time.at[index, 'EO_tpeak'] = df_tst_ted.at[closest_index, 'EO_tpeak']
         df_time.at[index, 'EO_tend'] = df_tst_ted.at[closest_index, 'EO_tend_thrd']
         df_time.at[index, 'depec_file'] = df_tst_ted.at[closest_index, 'depec_file']
+        df_time.at[index, 'depec_img'] = df_tst_ted.at[closest_index, 'depec_img']
 
     # Drop the temporary columns
     df_time.drop(['GOES_flare_class', 'DateTime'], axis=1, inplace=True)
@@ -903,7 +944,7 @@ def main():
     #    20190415193100,2019-04-15,19:31:00,B3.3,2019-04-15 19:30:04,2019-04-15 19:32:21,2019-04-15 19:33:10,519.1,152.3
     # The Flare_ID is automatic (just incremented from 1), so is not explicitly written.  Also, separating Date and Time doesn't make sense, so combine into a single Date:
 
-    columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file']
+    columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file', 'depec_img']
 
     values = []
 
@@ -918,6 +959,7 @@ def main():
     EO_tend = df['EO_tend']
     GOES_class = df['flare_class']
     depec_file = df['depec_file']
+    depec_img = df['depec_img']
 
     ##=============
     for i in range(len(flare_id)):
@@ -926,7 +968,7 @@ def main():
             # newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd, EO_xcen[i], EO_ycen[i], depec_file[i]]
             newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd,
                        Time(EO_tend[i]).jd,
-                       str(depec_file[i])]
+                       str(depec_file[i]), str(depec_img[i])]
 
             values.append(newlist)
             print("EOVSA_flare_list_wiki_tb Update for ", int(flare_id[i]))
@@ -972,13 +1014,19 @@ def main():
             Flare_ID = int(flare_id_tot[i])
             depec_file = str(depec_file_tot[i])
 
-            dsfile_path = '/common/webplots/events/' + str(Flare_ID)[0:4] + '/' + depec_file + '.dat'
+            dsfile_path = '/common/webplots/events/' + str(Flare_ID)[0:4] + '/' + depec_file
             try:
-                data1 = rd_datfile(dsfile_path)
+                if dsfile_path.split('.')[-1] == 'dat':
+                    data1 = rd_datfile(dsfile_path)
+                    time = data1['time']  ##in jd
+                    freq = np.array(data1['fghz'])
+                    spec = np.array(data1['data'])
 
-                time = data1['time']  ##in jd
-                freq = np.array(data1['fghz'])
-                spec = np.array(data1['data'])
+                if dsfile_path.split('.')[-1] == 'fits':
+                    eospecfits = fits.open(dsfile_path)
+                    time = np.array(eospecfits[2].data['TIME'])
+                    freq = np.array(eospecfits[1].data['FGHZ'])
+                    spec = eospecfits[0].data
 
                 time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=4, f_step=1, do_mean=False)
 
@@ -1015,7 +1063,6 @@ def main():
             cursor = cnxn.cursor()
             insert_query = "INSERT INTO Flare_IDs (Flare_ID, `Index`) VALUES (%s, %s)"
             cursor.execute(insert_query, (Flare_ID, i + 1))
-
             cnxn.commit()
             cursor.close()
 
