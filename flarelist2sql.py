@@ -892,7 +892,7 @@ def main():
     ##=============
 
     # Connect to the database and get a cursor to access it:
-    cnxn = create_flare_lc_db_connection()
+    cnxn = create_flare_db_connection()
 
     cursor = cnxn.cursor()
     table = 'EOVSA_flare_list_wiki_tb'
