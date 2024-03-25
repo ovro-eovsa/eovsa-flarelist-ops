@@ -32,7 +32,15 @@ from astropy.io import fits
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 # Global settings and initializations
-EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
+# EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
+EO_WIKI_URLs = [
+    "https://www.ovsa.njit.edu/wiki/index.php/2019",
+    "https://www.ovsa.njit.edu/wiki/index.php/2020",
+    "https://www.ovsa.njit.edu/wiki/index.php/2021",
+    "https://www.ovsa.njit.edu/wiki/index.php/2022",
+    "https://www.ovsa.njit.edu/wiki/index.php/2023",
+    "https://www.ovsa.njit.edu/wiki/index.php/2024"
+]
 
 ## todo add command line ar for time and frequency input to register a flare event and update the sql.
 def create_flare_db_connection():
@@ -69,6 +77,7 @@ bad_data_mark = ['2022-10-13 00:10:00',
 ## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
 datfile_urls = [
     "http://ovsa.njit.edu/events/2019/",
+    "http://ovsa.njit.edu/events/2020/",
     "http://ovsa.njit.edu/events/2021/",
     "http://ovsa.njit.edu/events/2022/",
     "http://ovsa.njit.edu/events/2023/",
@@ -137,7 +146,7 @@ except:
     logos = ''
 
 
-def fetch_flare_data_from_wiki(eo_wiki_url, given_date_strp, outcsvfile):
+def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
     """
     Fetches flare data from the given wiki URL and saves it to a CSV file in the specified directory.
 
@@ -149,73 +158,70 @@ def fetch_flare_data_from_wiki(eo_wiki_url, given_date_strp, outcsvfile):
     Returns:
     - None
     """
-    response = requests.get(eo_wiki_url)
+    date_data = []
+    time_ut_data = []
+    flare_class_data = []
+    depec_file = []
+    depec_img = []
 
-    # Check if the request was successful
-    if response.status_code == 200:
-        # Parse the HTML content of the page using BeautifulSoup
-        soup = BeautifulSoup(response.text, "html.parser")
-        tables = soup.find_all("table", {"class": "wikitable"})
+    for eo_wiki_url in eo_wiki_urls:
+        response = requests.get(eo_wiki_url)
 
-        date_data = []
-        time_ut_data = []
-        flare_class_data = []
-        depec_file = []
-        depec_img = []
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the HTML content of the page using BeautifulSoup
+            soup = BeautifulSoup(response.text, "html.parser")
+            tables = soup.find_all("table", {"class": "wikitable"})
 
-        for table in tables:
-            for row in table.find_all("tr"):
-                cells = row.find_all("td")
+            for table in tables:
+                for row in table.find_all("tr"):
+                    cells = row.find_all("td")
 
-                if len(cells) >= 3:
-                    date = cells[0].text.strip()
-                    time_ut = cells[1].text.strip()
-                    flare_class = cells[2].text.strip()
-                    datetime_strp = datetime.strptime(date + ' ' + time_ut, '%Y-%m-%d %H:%M')
+                    if len(cells) >= 3:
+                        date = cells[0].text.strip()
+                        time_ut = cells[1].text.strip()
+                        flare_class = cells[2].text.strip()
+                        datetime_strp = datetime.strptime(date + ' ' + time_ut, '%Y-%m-%d %H:%M')
 
-                    if given_date_strp[0] <= datetime_strp <= given_date_strp[1]:
-                        date_data.append(date)
-                        time_ut_data.append(time_ut)
-                        flare_class_data.append(flare_class)
-                                            
-                        depec_file_tmp = ''
-                        for cell in cells:
-                            link_cell = cell.find('a', class_='external text', href=True, rel='nofollow')
-                            if link_cell:
-                                url = link_cell['href']
-                                if url.endswith(".dat"):
-                                    depec_file_tmp = url.split('/')[-1]
-                                elif url.endswith(".fits"):
-                                    depec_file_tmp = url.split('/')[-1]
-                            if depec_file_tmp:  # If a file name has been captured, stop looking further
-                                break
-                        depec_file.append(depec_file_tmp)
+                        if given_date_strp[0] <= datetime_strp <= given_date_strp[1]:
+                            date_data.append(date)
+                            time_ut_data.append(time_ut)
+                            flare_class_data.append(flare_class)
+                                                
+                            depec_file_tmp = ''
+                            for cell in cells:
+                                link_cell = cell.find('a', class_='external text', href=True, rel='nofollow')
+                                if link_cell:
+                                    url = link_cell['href']
+                                    if url.endswith(".dat") or url.endswith(".fits"):
+                                        depec_file_tmp = url.split('/')[-1]
+                                        break
+                            depec_file.append(depec_file_tmp)
 
-                        depec_img_tmp = ''
-                        for cell in cells:
-                            if cell.find(class_="thumbimage"):
-                                img_tag = cell.find('img')
-                                if img_tag:
-                                    src_attribute = img_tag.get('src')##'/wiki/images/a/ac/EOVSA_20240212_C5flare.png'                                
-                                    if src_attribute:
-                                        depec_img_tmp = src_attribute.split('/')[-1]
-                        depec_img.append(depec_img_tmp)
+                            depec_img_tmp = ''
+                            for cell in cells:
+                                if cell.find(class_="thumbimage"):
+                                    img_tag = cell.find('img')
+                                    if img_tag:
+                                        src_attribute = img_tag.get('src')##'/wiki/images/a/ac/EOVSA_20240212_C5flare.png'                                
+                                        if src_attribute:
+                                            depec_img_tmp = src_attribute.split('/')[-1]
+                            depec_img.append(depec_img_tmp)
+        else:
+            print("Failed to retrieve the webpage. Status code:", response.status_code)
 
-        data = {
-            "ID": np.arange(len(date_data)) + 1,
-            "Date": date_data,
-            "Time (UT)": time_ut_data,
-            "Flare Class": flare_class_data,
-            "depec_file": depec_file,
-            "depec_img": depec_img
-        }
+    data = {
+        "ID": np.arange(len(date_data)) + 1,
+        "Date": date_data,
+        "Time (UT)": time_ut_data,
+        "Flare Class": flare_class_data,
+        "depec_file": depec_file,
+        "depec_img": depec_img
+    }
 
-        df = pd.DataFrame(data)
-        df.to_csv(outcsvfile, index=False)
-        print(f"Date and Time (UT) data saved to {outcsvfile}")
-    else:
-        print("Failed to retrieve the webpage. Status code:", response.status_code)
-
+    df = pd.DataFrame(data)
+    df.to_csv(outcsvfile, index=False)
+    print(f"Date and Time (UT) data saved to {outcsvfile}")
 
 def get_flare_info_from_GOES(tpeak_str):
     # This function should return a tuple with GOES class, start, peak, end times, and optionally X and Y coordinates.
@@ -455,7 +461,7 @@ def main():
 
     print("##=============Step 1: capture the radio peak times from flare list wiki webpage")
     init_csv = os.path.join(work_dir, "get_time_from_wiki_given_date.csv")
-    fetch_flare_data_from_wiki(EO_WIKI_URL, timerange_strp, init_csv)
+    fetch_flare_data_from_wiki(EO_WIKI_URLs, timerange_strp, init_csv)
 
     print("##=============Step 2: reformate the date and time")
     # Read the initial CSV file
@@ -730,7 +736,7 @@ def main():
             ax2.set_ylabel('Flux [sfu]', fontsize=fontsize_pl + 2)
             ax2.set_xlim(tim_plt[0], tim_plt[-1])
             # ax2.set_ylim(drange[0], drange[1])
-            ax2.set_title(f'EOVSA Flare ID: {filename}')
+            ax2.set_title(f'{filename}')#EOVSA Flare ID: 
 
             locator = AutoDateLocator(minticks=2)
             ax2.xaxis.set_major_locator(locator)
@@ -776,7 +782,7 @@ def main():
         ph1 = ax1.pcolormesh(tim_plt, freq_plt, spec_plt, norm=mcolors.LogNorm(vmin=drange[0], vmax=drange[1]),
                              cmap='viridis')  #
 
-        ax1.set_title(f'EOVSA Flare ID: {filename}', fontsize=fontsize_pl + 2)
+        ax1.set_title(f'{filename}', fontsize=fontsize_pl + 2)
         ax1.set_ylabel('Frequency [GHz]', fontsize=fontsize_pl + 2)
 
         ax1.set_xlim(tim_plt[0], tim_plt[-1])
@@ -840,7 +846,7 @@ def main():
         except:
             print('Failed to add logos. Proceed')
         #####==================================================
-        figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"eovsa.spec.flare_id_{filename}.png")
+        figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"{filename}.png")
         fig.savefig(figname, dpi=FIG_DPI, transparent=False)
         plt.close()
         print(f'Write spectrogram to {figname}')
