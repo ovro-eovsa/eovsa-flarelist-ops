@@ -378,7 +378,7 @@ def rd_datfile(file):
     return {'time': times, 'fghz': fghz, 'data': data}
 
 
-def spec_rebin(time, freq, spec, t_step=12, f_step=1, do_mean=True):
+def spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=True):
     """
     Rebin a spectrogram array to a new resolution in time and frequency.
     """
@@ -1034,7 +1034,7 @@ def main():
                     freq = np.array(eospecfits[1].data['FGHZ'])
                     spec = eospecfits[0].data
 
-                time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=4, f_step=1, do_mean=False)
+                time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=False)
 
                 freq_plt = [3, 7, 11, 15]
                 freq_QL = np.zeros(len(freq_plt))
