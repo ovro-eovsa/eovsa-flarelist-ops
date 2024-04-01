@@ -15,12 +15,12 @@ To utilize the scripts in this repository effectively, you should have Python in
 screen -rd flarelist
 ```
 
-**Repository Update:** Ensure you're working with the latest version of the `eovsa-flarelist-ops` repository. It's synced with the main repository at [https://github.com/ovro-eovsa/eovsa-flarelist.git](https://github.com/ovro-eovsa/eovsa-flarelist.git). To update:
+**Repository Update:** To guarantee you are utilizing the most current iteration of the `eovsa-flarelist-ops` repository, make sure it aligns with the upstream repository at [https://github.com/ovro-eovsa/eovsa-flarelist-ops.git](https://github.com/ovro-eovsa/eovsa-flarelist-ops.git). The repository is also mirrored at [https://github.com/sageyu123/eovsa-flarelist-ops.git](https://github.com/sageyu123/eovsa-flarelist-ops.git), serving as the origin. For the latest updates, you may choose to sync directly with the upstream or adjust the origin accordingly. To proceed with updating, follow these steps:
 
 ```bash
 cd $HOME/eovsa-flarelist-ops
-sudo git fetch origin
-sudo git merge origin/main
+sudo git fetch upstream
+sudo git merge upstream/main
 ```
 
 ## Usage
