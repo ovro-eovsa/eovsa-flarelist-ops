@@ -9,7 +9,7 @@ To utilize the scripts in this repository effectively, you should have Python in
 - MySQL connectors for database operations.
 - Data processing and visualization libraries, such as NumPy and Matplotlib.
 
-**Environment Setup:** The scripts are currently deployed on the OVSA server, accessible under the `sjyu` account. To begin working with the scripts, log in to the server (`sjyu@ovsa`), and attach to the pre-existing screen session dedicated to flare list updates:
+**Environment Setup:** The scripts are currently deployed on the `OVSA` server, accessible under the `sjyu` account. To begin working with the scripts, log in to the server (`sjyu@ovsa`), and attach to the pre-existing screen session dedicated to flare list updates:
 
 ```bash
 screen -rd flarelist
@@ -47,6 +47,11 @@ Options include:
 - `-t` or `--timerange` to define the time range for fetching and processing flare data.
 - `--do_manu` for manual adjustments of the start/end times for radio bursts.
 - `-h` or `--help` to show this help message and exit.
+
+A cronbjob is set up to run the script every day at 00:00 UTC on OVSA, with logs written to `$HOME/flarelist_update.log`.
+```crontab
+0 0 * * * /bin/bash -c 'cd /home/sjyu/eovsa-flarelist-ops && ./run_flarelist2sql.sh -t "$(date -d "2 days ago" "+\%Y-\%m-\%d \%H:\%M:\%S")" "$(date "+\%Y-\%m-\%d \%H:\%M:\%S")"' >> $HOME/flarelist_update.log 2>&1
+```
 
 ## License
 
