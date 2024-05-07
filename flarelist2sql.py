@@ -31,6 +31,7 @@ from astropy.io import fits
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
+
 # Global settings and initializations
 # EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
 EO_WIKI_URLs = [
