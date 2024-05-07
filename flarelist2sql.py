@@ -31,7 +31,6 @@ from astropy.io import fits
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
-
 # Global settings and initializations
 # EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
 EO_WIKI_URLs = [
@@ -42,6 +41,7 @@ EO_WIKI_URLs = [
     "https://www.ovsa.njit.edu/wiki/index.php/2023",
     "https://www.ovsa.njit.edu/wiki/index.php/2024"
 ]
+
 
 ## todo add command line ar for time and frequency input to register a flare event and update the sql.
 def create_flare_db_connection():
@@ -188,7 +188,7 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
                             date_data.append(date)
                             time_ut_data.append(time_ut)
                             flare_class_data.append(flare_class)
-                                                
+
                             depec_file_tmp = ''
                             for cell in cells:
                                 link_cell = cell.find('a', class_='external text', href=True, rel='nofollow')
@@ -204,7 +204,8 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
                                 if cell.find(class_="thumbimage"):
                                     img_tag = cell.find('img')
                                     if img_tag:
-                                        src_attribute = img_tag.get('src')##'/wiki/images/a/ac/EOVSA_20240212_C5flare.png'                                
+                                        src_attribute = img_tag.get(
+                                            'src')  ##'/wiki/images/a/ac/EOVSA_20240212_C5flare.png'
                                         if src_attribute:
                                             depec_img_tmp = src_attribute.split('/')[-1]
                             depec_img.append(depec_img_tmp)
@@ -223,6 +224,7 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
     df = pd.DataFrame(data)
     df.to_csv(outcsvfile, index=False)
     print(f"Date and Time (UT) data saved to {outcsvfile}")
+
 
 def get_flare_info_from_GOES(tpeak_str):
     # This function should return a tuple with GOES class, start, peak, end times, and optionally X and Y coordinates.
@@ -564,10 +566,10 @@ def main():
     depec_file = df['depec_file']
 
     if on_server == 1:
-        files_wiki = [spec_data_dir + str(flare_id[i])[0:4] + "/" + str(file_name) for i, file_name in enumerate(depec_file)]
+        files_wiki = [spec_data_dir + str(flare_id[i])[0:4] + "/" + str(file_name) for i, file_name in
+                      enumerate(depec_file)]
     else:
         files_wiki = [os.path.join(spec_data_dir, f'{str(file_name)}') for file_name in depec_file]
-
 
     spec_img_dir = os.path.join(work_dir, 'spec_img/')
     os.makedirs(spec_img_dir, exist_ok=True)
@@ -595,9 +597,9 @@ def main():
             if filename1.split('.')[-1] == 'fits':
                 filename = filename1.split('.fits')[0]
                 eospecfits = fits.open(file_wiki)
-                spec = eospecfits[0].data # [freq, time]
-                fghz = np.array(eospecfits[1].data['FGHZ']) # in GHz
-                time1 = np.array(eospecfits[2].data['TIME']) # in jd format
+                spec = eospecfits[0].data  # [freq, time]
+                fghz = np.array(eospecfits[1].data['FGHZ'])  # in GHz
+                time1 = np.array(eospecfits[2].data['TIME'])  # in jd format
 
         except Exception as e:
             temp = datetime.strptime(str(flare_id[ww]), "%Y%m%d%H%M%S")
