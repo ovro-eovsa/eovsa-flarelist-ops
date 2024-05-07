@@ -700,156 +700,156 @@ def main():
         tst_thrd_spec_wiki.append(Time(time_st_thrd, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
         ted_thrd_spec_wiki.append(Time(time_ed_thrd, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
 
-        ##=============plot the dynamic spectrum and flux curves
-        tim_plt = time_spec.plot_date
-        freq_plt = fghz
-        spec_plt = spec  # np.nan_to_num(spec, nan=0.0)
-        spec_plt[spec_plt < 0] = 0.01
+        # #####==================================================plot the dynamic spectrum and flux curves
+        # tim_plt = time_spec.plot_date
+        # freq_plt = fghz
+        # spec_plt = spec  # np.nan_to_num(spec, nan=0.0)
+        # spec_plt[spec_plt < 0] = 0.01
 
-        # drange = [1,np.max(spec_plt)]#np.max(spec_plt)
-        # drange = [0.01, 10]  # np.max(spec_plt)
-        drange = [0.01, np.percentile(spec_plt, 97.5)]
+        # # drange = [1,np.max(spec_plt)]#np.max(spec_plt)
+        # # drange = [0.01, 10]  # np.max(spec_plt)
+        # drange = [0.01, np.percentile(spec_plt, 97.5)]
 
-        if do_manu == 1:
-            #####==================================================
-            # Initialize global variables
-            click_count = 0
-            x1, y1, x2, y2 = 0, 0, 0, 0
+        # if do_manu == 1:
+        #     #####==================================================
+        #     # Initialize global variables
+        #     click_count = 0
+        #     x1, y1, x2, y2 = 0, 0, 0, 0
 
-            # Create a figure and connect the mouse click event handler
-            fig, ax2 = plt.subplots()
-            cid = fig.canvas.mpl_connect('button_press_event', onclick)
+        #     # Create a figure and connect the mouse click event handler
+        #     fig, ax2 = plt.subplots()
+        #     cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
-            ##=============plot the flux curves and manully determine the start/end time
-            freq_pl_tot = [2., 4., 6., 8., 10., 12.]  #
-            # freq_pl_tot = [3.,5.,7.,9.,11,14.]#
+        #     ##=============plot the flux curves and manully determine the start/end time
+        #     freq_pl_tot = [2., 4., 6., 8., 10., 12.]  #
+        #     # freq_pl_tot = [3.,5.,7.,9.,11,14.]#
 
-            cmap_flux = matplotlib.colormaps.get_cmap("jet")
+        #     cmap_flux = matplotlib.colormaps.get_cmap("jet")
 
-            for ff, freq_pl_temp in enumerate(freq_pl_tot):
-                freq_pl_ind = np.argmin(np.abs(freq_plt - freq_pl_temp))
-                ax2.plot(tim_plt, spec_plt[freq_pl_ind, :], label="{:.2f}".format(freq_plt[freq_pl_ind]) + ' GHz',
-                         c=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.8)
-                plt.hlines(mad_threshd[freq_pl_ind], tim_plt[0], tim_plt[-1], linestyle='--',
-                           color=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.5)
+        #     for ff, freq_pl_temp in enumerate(freq_pl_tot):
+        #         freq_pl_ind = np.argmin(np.abs(freq_plt - freq_pl_temp))
+        #         ax2.plot(tim_plt, spec_plt[freq_pl_ind, :], label="{:.2f}".format(freq_plt[freq_pl_ind]) + ' GHz',
+        #                  c=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.8)
+        #         plt.hlines(mad_threshd[freq_pl_ind], tim_plt[0], tim_plt[-1], linestyle='--',
+        #                    color=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.5)
 
-            ax2.set_ylabel('Flux [sfu]', fontsize=fontsize_pl + 2)
-            ax2.set_xlim(tim_plt[0], tim_plt[-1])
-            # ax2.set_ylim(drange[0], drange[1])
-            ax2.set_title(f'{filename}')#EOVSA Flare ID: 
+        #     ax2.set_ylabel('Flux [sfu]', fontsize=fontsize_pl + 2)
+        #     ax2.set_xlim(tim_plt[0], tim_plt[-1])
+        #     # ax2.set_ylim(drange[0], drange[1])
+        #     ax2.set_title(f'{filename}')#EOVSA Flare ID: 
 
-            locator = AutoDateLocator(minticks=2)
-            ax2.xaxis.set_major_locator(locator)
-            formatter = AutoDateFormatter(locator)
-            formatter.scaled[1 / 24] = '%D %H'
-            formatter.scaled[1 / (24 * 60)] = '%H:%M'
-            ax2.xaxis.set_major_formatter(formatter)
-            ax2.set_autoscale_on(False)
+        #     locator = AutoDateLocator(minticks=2)
+        #     ax2.xaxis.set_major_locator(locator)
+        #     formatter = AutoDateFormatter(locator)
+        #     formatter.scaled[1 / 24] = '%D %H'
+        #     formatter.scaled[1 / (24 * 60)] = '%H:%M'
+        #     ax2.xaxis.set_major_formatter(formatter)
+        #     ax2.set_autoscale_on(False)
 
-            plt.xticks(fontsize=fontsize_pl)
-            plt.yticks(fontsize=fontsize_pl)
+        #     plt.xticks(fontsize=fontsize_pl)
+        #     plt.yticks(fontsize=fontsize_pl)
 
-            plt.fill_between([time_st.plot_date, time_ed.plot_date], -1e3, 1e4, color='gray', alpha=0.3,
-                             label='Flare Duration')
+        #     plt.fill_between([time_st.plot_date, time_ed.plot_date], -1e3, 1e4, color='gray', alpha=0.3,
+        #                      label='Flare Duration')
 
-            plt.legend(prop={'size': 11})
+        #     plt.legend(prop={'size': 11})
 
-            # Show the figure
-            plt.show()
-            ##=============
-            # After closing the figure, check if two clicks were made
-            if click_count == 2:
-                print("Clicked positions:", (x1, y1, x2, y2))
-            else:
-                x1 = time_st.plot_date
-                x2 = time_ed.plot_date
-                print("You need to click twice to select positions.")
-            try:
-                tst_manu_spec_wiki.append(Time(x1, format='plot_date').strftime('%Y-%m-%d %H:%M:%S'))
-                ted_manu_spec_wiki.append(Time(x2, format='plot_date').strftime('%Y-%m-%d %H:%M:%S'))
-            except ValueError:
-                print(f"The input x1/x2 does not match the plot_date format.")
-                tst_manu_spec_wiki.append(Time(time_st, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
-                ted_manu_spec_wiki.append(Time(time_ed, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
-        else:
-            tst_manu_spec_wiki.append('')
-            ted_manu_spec_wiki.append('')
+        #     # Show the figure
+        #     plt.show()
+        #     ##=============
+        #     # After closing the figure, check if two clicks were made
+        #     if click_count == 2:
+        #         print("Clicked positions:", (x1, y1, x2, y2))
+        #     else:
+        #         x1 = time_st.plot_date
+        #         x2 = time_ed.plot_date
+        #         print("You need to click twice to select positions.")
+        #     try:
+        #         tst_manu_spec_wiki.append(Time(x1, format='plot_date').strftime('%Y-%m-%d %H:%M:%S'))
+        #         ted_manu_spec_wiki.append(Time(x2, format='plot_date').strftime('%Y-%m-%d %H:%M:%S'))
+        #     except ValueError:
+        #         print(f"The input x1/x2 does not match the plot_date format.")
+        #         tst_manu_spec_wiki.append(Time(time_st, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
+        #         ted_manu_spec_wiki.append(Time(time_ed, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
+        # else:
+        #     tst_manu_spec_wiki.append('')
+        #     ted_manu_spec_wiki.append('')
 
-        #####==================================================plot 1-1 spectrum
-        fig = plt.figure(figsize=(10, 8))
-        ax1 = fig.add_axes([0.1, 0.55, 0.75, 0.36])
+        # #####==================================================plot 1-1 spectrum
+        # fig = plt.figure(figsize=(10, 8))
+        # ax1 = fig.add_axes([0.1, 0.55, 0.75, 0.36])
 
-        ph1 = ax1.pcolormesh(tim_plt, freq_plt, spec_plt, norm=mcolors.LogNorm(vmin=drange[0], vmax=drange[1]),
-                             cmap='viridis')  #
+        # ph1 = ax1.pcolormesh(tim_plt, freq_plt, spec_plt, norm=mcolors.LogNorm(vmin=drange[0], vmax=drange[1]),
+        #                      cmap='viridis')  #
 
-        ax1.set_title(f'{filename}', fontsize=fontsize_pl + 2)
-        ax1.set_ylabel('Frequency [GHz]', fontsize=fontsize_pl + 2)
+        # ax1.set_title(f'{filename}', fontsize=fontsize_pl + 2)
+        # ax1.set_ylabel('Frequency [GHz]', fontsize=fontsize_pl + 2)
 
-        ax1.set_xlim(tim_plt[0], tim_plt[-1])
-        # ax1.set_ylim(freq_plt[fidx[0]], freq_plt[fidx[-1]])
+        # ax1.set_xlim(tim_plt[0], tim_plt[-1])
+        # # ax1.set_ylim(freq_plt[fidx[0]], freq_plt[fidx[-1]])
 
-        locator = AutoDateLocator(minticks=2)
-        ax1.xaxis.set_major_locator(locator)
-        formatter = AutoDateFormatter(locator)
-        formatter.scaled[1 / 24] = '%D %H'
-        formatter.scaled[1 / (24 * 60)] = '%H:%M'
-        ax1.xaxis.set_major_formatter(formatter)
-        ax1.set_autoscale_on(False)
+        # locator = AutoDateLocator(minticks=2)
+        # ax1.xaxis.set_major_locator(locator)
+        # formatter = AutoDateFormatter(locator)
+        # formatter.scaled[1 / 24] = '%D %H'
+        # formatter.scaled[1 / (24 * 60)] = '%H:%M'
+        # ax1.xaxis.set_major_formatter(formatter)
+        # ax1.set_autoscale_on(False)
 
-        plt.xticks(fontsize=fontsize_pl)
-        plt.yticks(fontsize=fontsize_pl)
+        # plt.xticks(fontsize=fontsize_pl)
+        # plt.yticks(fontsize=fontsize_pl)
 
-        cax = fig.add_axes([0.86, 0.55, 0.012, 0.36])
-        cbar = plt.colorbar(ph1, ax=ax1, cax=cax)  # shrink=0.8, pad=0.05
-        cbar.set_label('Flux  (sfu)', fontsize=fontsize_pl)
+        # cax = fig.add_axes([0.86, 0.55, 0.012, 0.36])
+        # cbar = plt.colorbar(ph1, ax=ax1, cax=cax)  # shrink=0.8, pad=0.05
+        # cbar.set_label('Flux  (sfu)', fontsize=fontsize_pl)
 
-        #####==================================================plot 1-2 flux curve
-        ax2 = fig.add_axes([0.1, 0.1, 0.75, 0.36])
+        # #####==================================================plot 1-2 flux curve
+        # ax2 = fig.add_axes([0.1, 0.1, 0.75, 0.36])
 
-        freq_pl_tot = [2., 4., 6., 8., 10., 12.]  #
-        # freq_pl_tot=[3.,5.,7.,9.,11,14.]#
+        # freq_pl_tot = [2., 4., 6., 8., 10., 12.]  #
+        # # freq_pl_tot=[3.,5.,7.,9.,11,14.]#
 
-        cmap_flux = matplotlib.colormaps.get_cmap("jet")
+        # cmap_flux = matplotlib.colormaps.get_cmap("jet")
 
-        for ff, freq_pl_temp in enumerate(freq_pl_tot):
-            freq_pl_ind = np.argmin(np.abs(freq_plt - freq_pl_temp))
-            ax2.plot(tim_plt, spec_plt[freq_pl_ind, :], label="{:.2f}".format(freq_plt[freq_pl_ind]) + ' GHz',
-                     c=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.8)
-            plt.hlines(mad_threshd[freq_pl_ind], tim_plt[0], tim_plt[-1], linestyle='--',
-                       color=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.5)
+        # for ff, freq_pl_temp in enumerate(freq_pl_tot):
+        #     freq_pl_ind = np.argmin(np.abs(freq_plt - freq_pl_temp))
+        #     ax2.plot(tim_plt, spec_plt[freq_pl_ind, :], label="{:.2f}".format(freq_plt[freq_pl_ind]) + ' GHz',
+        #              c=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.8)
+        #     plt.hlines(mad_threshd[freq_pl_ind], tim_plt[0], tim_plt[-1], linestyle='--',
+        #                color=cmap_flux(ff / (len(freq_pl_tot) - 1)), linewidth=0.5)
 
-        ax2.set_ylabel('Flux [sfu]', fontsize=fontsize_pl + 2)
-        ax2.set_xlim(tim_plt[0], tim_plt[-1])
-        # ax2.set_ylim(drange[0], drange[1])
+        # ax2.set_ylabel('Flux [sfu]', fontsize=fontsize_pl + 2)
+        # ax2.set_xlim(tim_plt[0], tim_plt[-1])
+        # # ax2.set_ylim(drange[0], drange[1])
 
-        locator = AutoDateLocator(minticks=2)
-        ax2.xaxis.set_major_locator(locator)
-        formatter = AutoDateFormatter(locator)
-        formatter.scaled[1 / 24] = '%D %H'
-        formatter.scaled[1 / (24 * 60)] = '%H:%M'
-        ax2.xaxis.set_major_formatter(formatter)
-        ax2.set_autoscale_on(False)
+        # locator = AutoDateLocator(minticks=2)
+        # ax2.xaxis.set_major_locator(locator)
+        # formatter = AutoDateFormatter(locator)
+        # formatter.scaled[1 / 24] = '%D %H'
+        # formatter.scaled[1 / (24 * 60)] = '%H:%M'
+        # ax2.xaxis.set_major_formatter(formatter)
+        # ax2.set_autoscale_on(False)
 
-        plt.xticks(fontsize=fontsize_pl)
-        plt.yticks(fontsize=fontsize_pl)
+        # plt.xticks(fontsize=fontsize_pl)
+        # plt.yticks(fontsize=fontsize_pl)
 
-        plt.fill_between([time_st.plot_date, time_ed.plot_date], -1e3, 1e4, color='gray', alpha=0.3,
-                         label='Flare Duration')
-        if do_manu == 1:
-            plt.fill_between([x1, x2], -1e3, 1e4, color='red', alpha=0.1, label='st/ed manu')
+        # plt.fill_between([time_st.plot_date, time_ed.plot_date], -1e3, 1e4, color='gray', alpha=0.3,
+        #                  label='Flare Duration')
+        # if do_manu == 1:
+        #     plt.fill_between([x1, x2], -1e3, 1e4, color='red', alpha=0.1, label='st/ed manu')
 
-        plt.legend(prop={'size': 9})
+        # plt.legend(prop={'size': 9})
 
-        ## add logos
-        try:
-            add_logos_horizontally(fig, FIG_DPI, logos, gap=4, right_offset=200, top_offset=30)
-        except:
-            print('Failed to add logos. Proceed')
-        #####==================================================
-        figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"{filename}.png")
-        fig.savefig(figname, dpi=FIG_DPI, transparent=False)
-        plt.close()
-        print(f'Write spectrogram to {figname}')
+        # ## add logos
+        # try:
+        #     add_logos_horizontally(fig, FIG_DPI, logos, gap=4, right_offset=200, top_offset=30)
+        # except:
+        #     print('Failed to add logos. Proceed')
+        # #####==================================================
+        # figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"{filename}.png")
+        # fig.savefig(figname, dpi=FIG_DPI, transparent=False)
+        # plt.close()
+        # print(f'Write spectrogram to {figname}')
 
     data_csv = {
         "ID": np.arange(len(flare_id)) + 1,
@@ -857,8 +857,8 @@ def main():
         'EO_tpeak': tpk_spec_wiki,
         'EO_tstart_thrd': tst_thrd_spec_wiki,
         'EO_tend_thrd': ted_thrd_spec_wiki,
-        'EO_tstart_manu': tst_manu_spec_wiki,
-        'EO_tend_manu': ted_manu_spec_wiki,
+        # 'EO_tstart_manu': tst_manu_spec_wiki,
+        # 'EO_tend_manu': ted_manu_spec_wiki,
         'EO_tstart_mad': tst_mad_spec_wiki,
         'EO_tend_mad': ted_mad_spec_wiki,
         'depec_file': df['depec_file'],
