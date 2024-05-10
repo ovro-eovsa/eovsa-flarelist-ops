@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # This script wraps the flarelist2sql.py Python script, passing through any arguments directly.
-# Ensure you're in the 'user' group for correct permissions: use 'newgrp user' beforehand.
 
+source $HOME/.setenv_pyenv
 PYTHON_SCRIPT_PATH="$HOME/eovsa-flarelist-ops/flarelist2sql.py"
 
 # Check for the help option explicitly to display Python script's help
