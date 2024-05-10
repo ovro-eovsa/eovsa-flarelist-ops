@@ -48,9 +48,9 @@ Options include:
 - `--do_manu` for manual adjustments of the start/end times for radio bursts.
 - `-h` or `--help` to show this help message and exit.
 
-A cronbjob is set up to run the script every day at 00:00 UTC on OVSA, with logs written to `$HOME/flarelist_update.log`.
+A cronbjob is set up to run the script every 6 hours, with logs written to `$HOME/flarelist_update.log`.
 ```crontab
-0 0 * * * /bin/bash -c 'cd /home/sjyu/eovsa-flarelist-ops && ./run_flarelist2sql.sh -t "$(date -d "2 days ago" "+%Y-%m-%d %H:%M:%S")" "$(date "+%Y-%m-%d %H:%M:%S")"' >> $HOME/flarelist_update.log 2>&1
+0 */6 * * * /bin/bash -c 'cd /home/sjyu/eovsa-flarelist-ops && ./run_flarelist2sql.sh -t "$(date -d "2 days ago" "+\%Y-\%m-\%d \%H:\%M:\%S")" "$(date "+\%Y-\%m-\%d \%H:\%M:\%S")"' >> $HOME/flarelist_update.log 2>&1
 ```
 
 ## License
