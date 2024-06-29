@@ -244,22 +244,16 @@ def get_flare_info_from_GOES(tpeak_str):
     # tstart_str = "2019/04/15 12:00:00"
     # tend_str = "2019/04/16 12:00:00"
     # event_type = "FL"
-    result = Fido.search(a.Time(tstart_str, tend_str),
-                         # a.hek.EventType(event_type),
-                         # a.hek.FL.GOESCls > "M1.0",
-                         a.hek.OBS.Observatory == "GOES")
+    try:
+        result = Fido.search(a.Time(tstart_str, tend_str),
+                             # a.hek.EventType(event_type),
+                             # a.hek.FL.GOESCls > "M1.0",
+                             a.hek.OBS.Observatory == "GOES")
 
-    hek_results = result["hek"]
-    # print(hek_results.colnames[::2])
-    # print(result.show("hpc_bbox", "refs"))
-    if len(hek_results) == 0:
-        GOES_class = '?'
-        GOES_tstart = Time((tpeak - 0.0) / 24., format='mjd').iso
-        GOES_tpeak = Time(tpeak / 24., format='mjd').iso
-        GOES_tend = Time((tpeak + 0.0) / 24., format='mjd').iso
-        GOES_hgc_x = 0
-        GOES_hgc_y = 0
-    else:
+        hek_results = result["hek"]
+        #print(hek_results.colnames[::2])
+        #print(result.show("hpc_bbox", "refs"))
+
         filtered_results = hek_results["fl_goescls", "event_starttime", "event_peaktime",
         "event_endtime", "ar_noaanum", "hgc_x", "hgc_y"]
 
@@ -280,6 +274,14 @@ def get_flare_info_from_GOES(tpeak_str):
         GOES_tend = (hek_results["event_endtime"])[ind].iso
         GOES_hgc_x = (hek_results["hgc_x"])[ind]
         GOES_hgc_y = (hek_results["hgc_y"])[ind]
+
+    except:
+        GOES_class = '?'
+        GOES_tstart = Time((tpeak-0.0)/24., format='mjd').iso
+        GOES_tpeak = Time(tpeak/24., format='mjd').iso
+        GOES_tend = Time((tpeak+0.0)/24., format='mjd').iso
+        GOES_hgc_x = 0
+        GOES_hgc_y = 0
 
     print(f"GOES Class {GOES_class} peaks on {GOES_tpeak} / EO radio on {tpeak_str}")
     return GOES_class, GOES_tstart, GOES_tpeak, GOES_tend, GOES_hgc_x, GOES_hgc_y
