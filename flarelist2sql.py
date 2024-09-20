@@ -580,6 +580,8 @@ def main():
     tpk_spec_wiki, tst_mad_spec_wiki, ted_mad_spec_wiki = [], [], []
     tst_thrd_spec_wiki, ted_thrd_spec_wiki = [], []
     tst_manu_spec_wiki, ted_manu_spec_wiki = [], []
+    flux_pk_3GHz, flux_pk_7GHz, flux_pk_11GHz, flux_pk_15GHz = [], [], [], []
+    flux_pk_totGHz, freq_at_flux_pk = [], []
     depec_file = []
 
     ##=============
@@ -615,6 +617,13 @@ def main():
             ted_thrd_spec_wiki.append(temp_ed)
             tst_manu_spec_wiki.append(temp_st)
             ted_manu_spec_wiki.append(temp_ed)
+
+            flux_pk_3GHz.append(0)
+            flux_pk_7GHz.append(0)
+            flux_pk_11GHz.append(0)
+            flux_pk_15GHz.append(0)
+            flux_pk_totGHz.append(0)
+            freq_at_flux_pk.append(0)
             print('no data for:', file_wiki)
             continue
 
@@ -704,6 +713,24 @@ def main():
 
         tst_thrd_spec_wiki.append(Time(time_st_thrd, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
         ted_thrd_spec_wiki.append(Time(time_ed_thrd, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
+
+        # ##=========================get the peak flux at [3, 7, 11, 15] GHz
+        # freq_getflux = [3, 7, 11, 15]
+        # time_new, freq_new, spec_new = spec_rebin(time_spec.plot_date, fghz, spec, t_step=1, f_step=1, do_mean=False)
+        time_new, freq_new, spec_new = time_spec.plot_date, fghz, spec
+
+        ind = np.argmin(np.abs(freq_new - 3.))
+        flux_pk_3GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
+        ind = np.argmin(np.abs(freq_new - 7.))
+        flux_pk_7GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
+        ind = np.argmin(np.abs(freq_new - 11.))
+        flux_pk_11GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
+        ind = np.argmin(np.abs(freq_new - 15.))
+        flux_pk_15GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
+
+        flux_pk_totGHz.append(np.around(np.nanmax(spec_new), 1))
+        indf, indt = np.where(spec_new == np.nanmax(spec_new))
+        freq_at_flux_pk.append(np.around(freq_new[indf[0]], 2))
 
         # #####==================================================plot the dynamic spectrum and flux curves
         # tim_plt = time_spec.plot_date
@@ -867,7 +894,13 @@ def main():
         'EO_tstart_mad': tst_mad_spec_wiki,
         'EO_tend_mad': ted_mad_spec_wiki,
         'depec_file': df['depec_file'],
-        'depec_img': df['depec_img']
+        'depec_img': df['depec_img'],
+        'flux_pk_3GHz': flux_pk_3GHz,
+        'flux_pk_7GHz': flux_pk_7GHz,
+        'flux_pk_11GHz': flux_pk_11GHz,
+        'flux_pk_15GHz': flux_pk_15GHz,
+        'flux_pk_totGHz': flux_pk_totGHz,
+        'freq_at_flux_pk': freq_at_flux_pk
     }
 
     df = pd.DataFrame(data_csv)
@@ -895,6 +928,10 @@ def main():
     df_time['EO_tend'] = ""
     df_time['depec_file'] = ""
     df_time['depec_img'] = ""
+    df_time['flux_pk_3GHz'] = ""
+    df_time['flux_pk_7GHz'] = ""
+    df_time['flux_pk_11GHz'] = ""
+    df_time['flux_pk_15GHz'] = ""
 
     # Convert EO_tpeak_dt to the same MJD format for comparison
     df_tst_ted['EO_tpeak_mjd'] = [Time(row, format='datetime').mjd for row in df_tst_ted['EO_tpeak_dt']]
@@ -913,6 +950,10 @@ def main():
         df_time.at[index, 'EO_tend'] = df_tst_ted.at[closest_index, 'EO_tend_thrd']
         df_time.at[index, 'depec_file'] = df_tst_ted.at[closest_index, 'depec_file']
         df_time.at[index, 'depec_img'] = df_tst_ted.at[closest_index, 'depec_img']
+        df_time.at[index, 'flux_pk_3GHz'] = df_tst_ted.at[closest_index, 'flux_pk_3GHz']
+        df_time.at[index, 'flux_pk_7GHz'] = df_tst_ted.at[closest_index, 'flux_pk_7GHz']
+        df_time.at[index, 'flux_pk_11GHz'] = df_tst_ted.at[closest_index, 'flux_pk_11GHz']
+        df_time.at[index, 'flux_pk_15GHz'] = df_tst_ted.at[closest_index, 'flux_pk_15GHz']
 
     # Drop the temporary columns
     df_time.drop(['GOES_flare_class', 'DateTime'], axis=1, inplace=True)
@@ -926,6 +967,7 @@ def main():
     final_csv_file = os.path.join(work_dir, 'EOVSA_flare_list_from_wiki_sub.csv')
     os.rename(csv_file_comb, final_csv_file)
     print(f"Renamed to {final_csv_file}")
+
 
     ##=============step 6: write to MySQL 'EOVSA_flare_list_wiki_db'=============
     print("##=============step 6: write flare info to MySQL 'EOVSA_flare_list_wiki_db'")
@@ -955,7 +997,8 @@ def main():
     #    20190415193100,2019-04-15,19:31:00,B3.3,2019-04-15 19:30:04,2019-04-15 19:32:21,2019-04-15 19:33:10,519.1,152.3
     # The Flare_ID is automatic (just incremented from 1), so is not explicitly written.  Also, separating Date and Time doesn't make sense, so combine into a single Date:
 
-    columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file', 'depec_img']
+    columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file', 'depec_img', \
+                'flux_pk_3GHz', 'flux_pk_7GHz', 'flux_pk_11GHz', 'flux_pk_15GHz']
 
     values = []
 
@@ -971,6 +1014,10 @@ def main():
     GOES_class = df['flare_class']
     depec_file = df['depec_file']
     depec_img = df['depec_img']
+    flux_pk_3GHz = df['flux_pk_3GHz']
+    flux_pk_7GHz = df['flux_pk_7GHz']
+    flux_pk_11GHz = df['flux_pk_11GHz']
+    flux_pk_15GHz = df['flux_pk_15GHz']
 
     ##=============
     for i in range(len(flare_id)):
@@ -978,9 +1025,8 @@ def main():
             date = Time(dates[i] + ' ' + times[i]).jd
             # newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd, EO_xcen[i], EO_ycen[i], depec_file[i]]
             newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd,
-                       Time(EO_tend[i]).jd,
-                       str(depec_file[i]), str(depec_img[i])]
-
+                       Time(EO_tend[i]).jd, str(depec_file[i]), str(depec_img[i]),
+                       flux_pk_3GHz[i], flux_pk_7GHz[i], flux_pk_11GHz[i], flux_pk_15GHz[i]]
             values.append(newlist)
             print("EOVSA_flare_list_wiki_tb Update for ", int(flare_id[i]))
 

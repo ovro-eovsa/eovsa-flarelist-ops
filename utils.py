@@ -122,4 +122,49 @@ def change_EO_flareID(flare_id, flare_id_new):
     print("flare_id has been changed from ", flare_id, " to ", flare_id_new)
 
 
+#####==================================================
+'''to delete EOVSA flare IDs on web
+'''
+import os
+import glob
+def delete_EO_flareID(flare_id):
+    """
+    Delete EOVSA FITS/movie/ms/slfcal_ms files with flare_id.
+    example: delete_EO_flareID('20240713150500')
+    """
+    fitsdir_web_tp = '/data1/eovsa/fits/flares/'  # 'YYYY/MM/DD/flare_id/'
+    fitsdir_web = os.path.join(fitsdir_web_tp, flare_id[:4], flare_id[4:6], flare_id[6:8], flare_id)
+    # Files to delete in the FITS directory
+    for f in ['.calibrated.ms.tar.gz', '.selfcalibrated.ms.tar.gz', '.caltables.tar.gz']:
+        file_to_delete = os.path.join(fitsdir_web, flare_id + f)
+        if os.path.exists(file_to_delete):
+            os.remove(file_to_delete)
+            print(f"Deleted: {file_to_delete}")
+        else:
+            print(f"File not found: {file_to_delete}")
+    # Delete all "eovsa*.fits" files in the FITS directory
+    fits_files_pattern = os.path.join(fitsdir_web, 'eovsa.lev1_mbd_12s.*.image.fits')
+    fits_files = glob.glob(fits_files_pattern)
+    for file_to_delete in fits_files:
+        os.remove(file_to_delete)
+        print(f"Deleted: {file_to_delete}")
+    # Movie directory structure (based on year, month, day, and flare_id)
+    movdir_web_tp = '/common/webplots/SynopticImg/eovsamedia/eovsa-browser/'  # 'YYYY/MM/DD/'
+    movdir_web = os.path.join(movdir_web_tp, flare_id[:4], flare_id[4:6], flare_id[6:8])
+    movie_to_delete = os.path.join(movdir_web, f'eovsa.lev1_mbd_12s.flare_id_{flare_id}.mp4')
+    # Delete the movie file
+    if os.path.exists(movie_to_delete):
+        os.remove(movie_to_delete)
+        print(f"Deleted: {movie_to_delete}")
+    else:
+        print(f"Movie file not found: {movie_to_delete}")
+    # Optionally, you can delete the directories if empty after deleting files
+    try:
+        if not os.listdir(fitsdir_web):  # Check if FITS directory is empty
+            os.rmdir(fitsdir_web)
+            print(f"Deleted empty directory: {fitsdir_web}")
+    except FileNotFoundError:
+        print(f"Directory not found: {fitsdir_web}")
+    print(f"All products for flare_id {flare_id} have been deleted (if they existed).")
+
 
