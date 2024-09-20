@@ -34,6 +34,8 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 # Global settings and initializations
 # EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
 EO_WIKI_URLs = [
+    "https://www.ovsa.njit.edu/wiki/index.php/2017",
+    "https://www.ovsa.njit.edu/wiki/index.php/2018",
     "https://www.ovsa.njit.edu/wiki/index.php/2019",
     "https://www.ovsa.njit.edu/wiki/index.php/2020",
     "https://www.ovsa.njit.edu/wiki/index.php/2021",
@@ -77,6 +79,8 @@ bad_data_mark = ['2022-10-13 00:10:00',
 
 ## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
 datfile_urls = [
+    "http://ovsa.njit.edu/events/2017/",
+    "http://ovsa.njit.edu/events/2018/",
     "http://ovsa.njit.edu/events/2019/",
     "http://ovsa.njit.edu/events/2020/",
     "http://ovsa.njit.edu/events/2021/",
