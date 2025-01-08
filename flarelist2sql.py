@@ -1,5 +1,5 @@
 ##ipython flarelist2sql.py
-##=============
+##=========================
 from __future__ import print_function
 import socket
 import requests
@@ -10,7 +10,6 @@ import sys
 from scipy.signal import find_peaks
 import matplotlib
 import argparse
-import sys
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -18,31 +17,54 @@ import matplotlib.colors as mcolors
 from matplotlib.dates import AutoDateFormatter, AutoDateLocator, num2date
 import matplotlib.cm
 # import matplotlib.image as mpimg
-from PIL import Image
-from datetime import datetime, timedelta
-import warnings
-from matplotlib import MatplotlibDeprecationWarning
 import pandas as pd
 import numpy as np
+from PIL import Image
+from datetime import datetime, timedelta
 from astropy.time import Time
-import mysql.connector
-from datetime import datetime
 from astropy.io import fits
+import mysql.connector
 
+import warnings
+from matplotlib import MatplotlibDeprecationWarning
 warnings.filterwarnings('ignore', category=FutureWarning)
 
+
+##=========================
 # Global settings and initializations
 # EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
 EO_WIKI_URLs = [
+    "https://www.ovsa.njit.edu/wiki/index.php/2017",
+    "https://www.ovsa.njit.edu/wiki/index.php/2018",
     "https://www.ovsa.njit.edu/wiki/index.php/2019",
     "https://www.ovsa.njit.edu/wiki/index.php/2020",
     "https://www.ovsa.njit.edu/wiki/index.php/2021",
     "https://www.ovsa.njit.edu/wiki/index.php/2022",
     "https://www.ovsa.njit.edu/wiki/index.php/2023",
-    "https://www.ovsa.njit.edu/wiki/index.php/2024"
+    "https://www.ovsa.njit.edu/wiki/index.php/2024",
+    "https://www.ovsa.njit.edu/wiki/index.php/2025"
 ]
 
+##=========================dat data
+## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
+datfile_urls = [
+    "http://ovsa.njit.edu/events/2017/",
+    "http://ovsa.njit.edu/events/2018/",
+    "http://ovsa.njit.edu/events/2019/",
+    "http://ovsa.njit.edu/events/2020/",
+    "http://ovsa.njit.edu/events/2021/",
+    "http://ovsa.njit.edu/events/2022/",
+    "http://ovsa.njit.edu/events/2023/",
+    "http://ovsa.njit.edu/events/2024/",
+    "http://ovsa.njit.edu/events/2025/"
+]
 
+## plotting config
+fontsize_pl = 14.
+window_size = 10
+
+
+##=========================connect to database
 ## todo add command line ar for time and frequency input to register a flare event and update the sql.
 def create_flare_db_connection():
     return mysql.connector.connect(
@@ -51,7 +73,6 @@ def create_flare_db_connection():
         user=os.getenv('FLARE_DB_USER'),
         password=os.getenv('FLARE_DB_PASSWORD')
     )
-
 
 def create_flare_lc_db_connection():
     return mysql.connector.connect(
@@ -62,43 +83,12 @@ def create_flare_lc_db_connection():
     )
 
 
-##============= bad data
-bad_data = ['EOVSA_20221013_M1flare.dat',
-            'EOVSA_20230427_Cflare.dat',
-            'EOVSA_20230429_Cflare.dat',
-            'EOVSA_20230508_C9flare.dat',
-            'EOVSA_20230520_M56flare.dat']
-
-bad_data_mark = ['2022-10-13 00:10:00',
-                 '2023-04-27 01:00:00',
-                 '2023-04-29 23:02:00',
-                 '2023-05-08 14:19:00',
-                 '2023-05-20 14:58:00']
-
-## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
-datfile_urls = [
-    "http://ovsa.njit.edu/events/2019/",
-    "http://ovsa.njit.edu/events/2020/",
-    "http://ovsa.njit.edu/events/2021/",
-    "http://ovsa.njit.edu/events/2022/",
-    "http://ovsa.njit.edu/events/2023/",
-    "http://ovsa.njit.edu/events/2024/"
-]
-
-## plotting config
-
-fontsize_pl = 14.
-window_size = 10
-
+##=========================add EOVSA log to the spec plotting
 # Path to the folder containing the static images
-
 static_img_folder = '/var/www/html/flarelist/static/images/'
-
 # Target height for all logos
 FIG_DPI = 150
 LOGO_HEIGHT = 60  # Adjust this value as needed
-
-
 # Load and resize logos
 def load_and_resize_logo(path, target_height):
     img = Image.open(path)
@@ -107,7 +97,6 @@ def load_and_resize_logo(path, target_height):
     new_width = int(aspect_ratio * new_height)
     resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     return np.array(resized_img)
-
 
 def add_logos_horizontally(fig, dpi, logos, gap=4, right_offset=200, top_offset=30):
     """
@@ -136,7 +125,6 @@ def add_logos_horizontally(fig, dpi, logos, gap=4, right_offset=200, top_offset=
                      zorder=1000)  # Adjust y_offset for each logo based on its height
         x_offset += logo.shape[1] + gap  # Move right for the next logo
 
-
 # Load the logo images
 try:
     nsf_logo = load_and_resize_logo(os.path.join(static_img_folder, 'NSF_logo.png'), LOGO_HEIGHT)
@@ -147,27 +135,26 @@ except:
     logos = ''
 
 
+##=========================
 def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
     """
-    Fetches flare data from the given wiki URL and saves it to a CSV file in the specified directory.
+    Fetches flare data from the given wiki URLs and saves it to a CSV file in the specified directory.
 
     Parameters:
-    - eo_wiki_url: URL of the EO wiki page to fetch data from.
+    - eo_wiki_urls: List of URLs of the EO wiki pages to fetch data from.
     - given_date_strp: A tuple of datetime objects specifying the start and end dates to filter the data.
-    - outcsvfile: path to the resulting CSV file.
+    - outcsvfile: Path to the resulting CSV file.
 
     Returns:
     - None
     """
-    date_data = []
-    time_ut_data = []
-    flare_class_data = []
-    depec_file = []
-    depec_img = []
+    # Initializing lists to collect data
+    date_data, time_ut_data, flare_class_data, flare_ID_data = [], [], [], []
+    depec_imgfile_XP, depec_datafile_XP = [], []
+    depec_imgfile_TP, depec_datafile_TP = [], []
 
     for eo_wiki_url in eo_wiki_urls:
         response = requests.get(eo_wiki_url)
-
         # Check if the request was successful
         if response.status_code == 200:
             # Parse the HTML content of the page using BeautifulSoup
@@ -185,47 +172,77 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
                         datetime_strp = datetime.strptime(date + ' ' + time_ut, '%Y-%m-%d %H:%M')
 
                         if given_date_strp[0] <= datetime_strp <= given_date_strp[1]:
+                            # Get Date, Time (UT), and Flare Class
                             date_data.append(date)
-                            time_ut_data.append(time_ut)
+                            time_ut_data.append(f"{time_ut}:00")
                             flare_class_data.append(flare_class)
 
-                            depec_file_tmp = ''
+                            # Get Flare_ID
+                            eotime = f"{date.replace('/', '-')}T{time_ut}:00"
+                            flare_ID_data.append(eotime.replace('-', '').replace('T', '').replace(':', ''))
+                            print("Fetched: ", eotime)
+
+                            # Initialize placeholders for spectrogram files
+                            imgfile_XP, datafile_XP, imgfile_TP, datafile_TP = '', '', '', ''
+                            
+                            # Extracting spectrogram data files based on file names
                             for cell in cells:
+                                # Find external links to data files
                                 link_cell = cell.find('a', class_='external text', href=True, rel='nofollow')
+
                                 if link_cell:
                                     url = link_cell['href']
-                                    if url.endswith(".dat") or url.endswith(".fits"):
-                                        depec_file_tmp = url.split('/')[-1]
-                                        break
-                            depec_file.append(depec_file_tmp)
+                                    file_name = url.split('/')[-1]
+                                    if "eovsa.spec_xp." in file_name or "eovsa.spec." in file_name:
+                                        if file_name.endswith(".dat") or file_name.endswith(".fits"):
+                                            datafile_XP = file_name
+                                    if "eovsa.spec_tp" in file_name:
+                                        if file_name.endswith(".dat") or file_name.endswith(".fits"):
+                                            datafile_TP = file_name
 
-                            depec_img_tmp = ''
+                            # Extracting spectrogram image files based on file names
                             for cell in cells:
-                                if cell.find(class_="thumbimage"):
-                                    img_tag = cell.find('img')
-                                    if img_tag:
-                                        src_attribute = img_tag.get(
-                                            'src')  ##'/wiki/images/a/ac/EOVSA_20240212_C5flare.png'
-                                        if src_attribute:
-                                            depec_img_tmp = src_attribute.split('/')[-1]
-                            depec_img.append(depec_img_tmp)
+                                img_tag = cell.find('img')
+                                if img_tag:
+                                    src_attribute = img_tag.get('src')
+                                    if src_attribute:
+                                        file_name = src_attribute.split('/')[-1]
+                                        imgfile_XP = file_name
+                                        if ".spec_tp." in file_name and file_name.endswith(".png"):
+                                            imgfile_TP = file_name  # Assign TP-specific file to imgfile_TP
+                                        if ".spec_xp." in file_name and file_name.endswith(".png"):
+                                            imgfile_XP = file_name  # Assign XP-specific file to imgfile_XP
+                                        if ".spec." in file_name and file_name.endswith(".png"):
+                                            imgfile_XP = file_name  # Assign XP-specific file to imgfile_XP
+
+                            print(date, time_ut, flare_class, imgfile_XP, datafile_XP)
+                            # Append extracted file names to respective lists
+                            depec_imgfile_TP.append(imgfile_TP)
+                            depec_datafile_TP.append(datafile_TP)
+                            depec_imgfile_XP.append(imgfile_XP)
+                            depec_datafile_XP.append(datafile_XP)
+
         else:
             print("Failed to retrieve the webpage. Status code:", response.status_code)
 
+    # Reformatting and saving collected data into a DataFrame
     data = {
         "ID": np.arange(len(date_data)) + 1,
+        "Flare_ID": flare_ID_data,
         "Date": date_data,
         "Time (UT)": time_ut_data,
-        "Flare Class": flare_class_data,
-        "depec_file": depec_file,
-        "depec_img": depec_img
+        "Flare_Class": flare_class_data,
+        "depec_imgfile_TP": depec_imgfile_TP,
+        "depec_datafile_TP": depec_datafile_TP,
+        "depec_imgfile_XP": depec_imgfile_XP,
+        "depec_datafile_XP": depec_datafile_XP
     }
-
     df = pd.DataFrame(data)
     df.to_csv(outcsvfile, index=False)
-    print(f"Date and Time (UT) data saved to {outcsvfile}")
+    print(f"Data saved to {outcsvfile}")
+    return
 
-
+##=========================
 def get_flare_info_from_GOES(tpeak_str):
     # This function should return a tuple with GOES class, start, peak, end times, and optionally X and Y coordinates.
     # Example return format: ('M1.0', '2024-02-23 21:00:00', '2024-02-23 22:00:00', '2024-02-23 23:00:00', None, None)
@@ -287,7 +304,59 @@ def get_flare_info_from_GOES(tpeak_str):
     return GOES_class, GOES_tstart, GOES_tpeak, GOES_tend, GOES_hgc_x, GOES_hgc_y
 
 
-def download_datfiles_from_url(url, download_directory, timerange):
+
+##=========================
+def add_GOES_to_flarelist(input_csv, output_csv):
+    """
+    Add GOES_class, GOES_tstart, GOES_tpeak, GOES_tend, GOES_hgc_x, GOES_hgc_y
+    to the input flarelist csv file
+    """
+    df = pd.read_csv(input_csv)
+
+    GOES_flare_class = []
+    GOES_tstart = []
+    GOES_tpeak = []
+    GOES_tend = []
+    GOES_hgc_x = []
+    GOES_hgc_y = []
+    for index, row in df.iterrows():
+        eotime_flare_wiki = row["Date"] + 'T' + row["Time (UT)"]
+        GOES_class_tp, GOES_tstart_tp, GOES_tpeak_tp, GOES_tend_tp, GOES_hgc_x_tp, GOES_hgc_y_tp = get_flare_info_from_GOES(tpeak_str=eotime_flare_wiki)
+        GOES_flare_class.append(GOES_class_tp)
+        GOES_tstart.append(GOES_tstart_tp.split('.')[0])
+        GOES_tpeak.append(GOES_tpeak_tp.split('.')[0])
+        GOES_tend.append(GOES_tend_tp.split('.')[0])
+        GOES_hgc_x.append(GOES_hgc_x_tp)
+        GOES_hgc_y.append(GOES_hgc_y_tp)
+    # Reformatting and saving collected data into a DataFrame
+    data = {
+        "ID": df['ID'],
+        "Flare_ID": df['Flare_ID'],
+        "Date": df['Date'],
+        "Time (UT)": df['Time (UT)'],
+        "Flare_Class": df['Flare_Class'],
+        "GOES_flare_class": GOES_flare_class,
+        "GOES_tstart": GOES_tstart,
+        "GOES_tpeak": GOES_tpeak,
+        "GOES_tend": GOES_tend,
+        # "GOES_hgc_x": GOES_hgc_x,
+        # "GOES_hgc_y": GOES_hgc_y,
+        "depec_imgfile_TP": df['depec_imgfile_TP'],
+        "depec_datafile_TP": df['depec_datafile_TP'],
+        "depec_imgfile_XP": df['depec_imgfile_XP'],
+        "depec_datafile_XP": df['depec_datafile_XP']
+    }
+    df = pd.DataFrame(data)
+    df.to_csv(output_csv, index=False)
+    print(f"<add_GOES_to_flarelist> data saved to {output_csv}")
+    return
+
+
+##=========================
+def download_datfiles_from_url(url, download_directory, timerange_strp):
+    """
+    Downloads .dat and .fits EOVSA spec files from a given URL within a specified date range.
+    """
     # Send an HTTP GET request to the webpage
     response = requests.get(url)
     file_name_download = []
@@ -296,10 +365,8 @@ def download_datfiles_from_url(url, download_directory, timerange):
     if response.status_code == 200:
         # Parse the HTML content of the page
         soup = BeautifulSoup(response.text, 'html.parser')
-
         # Find all links on the page
         links = soup.find_all('a')
-
         # Loop through the links and download files
         for link in links:
             href = link.get('href')
@@ -307,32 +374,32 @@ def download_datfiles_from_url(url, download_directory, timerange):
                 # Ensure that the link is an absolute URL
                 if not href.startswith('http'):
                     href = url + href
-
                 # Get the file name from the URL
                 file_name = os.path.basename(href)
                 match = None
-
+                # Match different file naming conventions
                 if file_name.split('.')[-1] == 'dat':
-                    # print(file_name)
                     match = re.match(r'EOVSA_(\d{4})(\d{2})(\d{2})', file_name)
-                    if match == None:
+                    if not match:
                         match = re.match(r'(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', file_name)
-                if file_name.split('.')[-1] == 'fits':
+                elif file_name.split('.')[-1] == 'fits':
                     match = re.match(r'eovsa.spec.flare_id_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})', file_name)
+                    if not match:
+                        # Match eovsa.spec_xp.flare_id_ with either 12 or 14 digits after
+                        match = re.match(r'eovsa\.spec_xp\.flare_id_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?', file_name)
 
                 # Check if the file name matches the given date range pattern
                 if match:
                     file_date = match.group(1) + '-' + match.group(2) + '-' + match.group(3)
-
                     # Check if the file date is within the given date range
-                    if timerange[0].strftime('%Y-%m-%d') <= file_date <= (
-                            timerange[1] + timedelta(days=1)).strftime('%Y-%m-%d'):
-                        # Download the file
+                    if timerange_strp[0].strftime('%Y-%m-%d') <= file_date <= (
+                            timerange_strp[1] + timedelta(days=1)).strftime('%Y-%m-%d'):
+                        # Download the file if it does not already exist
                         if os.path.exists(os.path.join(download_directory, file_name)):
                             print(f"Exist: {file_name}")
                             continue  # Skip to the next iteration
-
                         try:
+                            # Download and save the file
                             with open(os.path.join(download_directory, file_name), 'wb') as file:
                                 file.write(requests.get(href).content)
                             print(f"Downloaded: {file_name}")
@@ -344,45 +411,46 @@ def download_datfiles_from_url(url, download_directory, timerange):
     return file_name_download
 
 
+##=========================
 def rd_datfile(file):
-    ''' Read EOVSA binary spectrogram file and return a dictionary with times
+    ''' Read EOVSA binary spectrogram file and return a dictionary with times 
         in Julian Date, frequencies in GHz, and cross-power data in sfu.
-
+        
         Return Keys:
           'time'     Numpy array of nt times in JD format
           'fghz'     Numpy array of nf frequencies in GHz
           'data'     Numpy array of size [nf, nt] containing cross-power data
-
+          
         Returns empty dictionary ({}) if file size is not compatible with inferred dimensions
     '''
     import struct
     import numpy as np
     def dims(file):
         # Determine time and frequency dimensions (assumes the file has fewer than 10000 times)
-        f = open(file, 'rb')
+        f = open(file,'rb')
         tmp = f.read(83608)  # max 10000 times and 451 frequencies
         f.close()
         nbytes = len(tmp)
-        tdat = np.array(struct.unpack(str(int(nbytes / 8)) + 'd', tmp[:nbytes]))
+        tdat = np.array(struct.unpack(str(int(nbytes/8))+'d',tmp[:nbytes]))
         nt = np.where(tdat < 2400000.)[0]
         nf = np.where(np.logical_or(tdat[nt[0]:] > 18, tdat[nt[0]:] < 1))[0]
         return nt[0], nf[0]
-
     nt, nf = dims(file)
-    f = open(file, 'rb')
-    tmp = f.read(nt * 8)
-    times = struct.unpack(str(nt) + 'd', tmp)
-    tmp = f.read(nf * 8)
-    fghz = struct.unpack(str(nf) + 'd', tmp)
+    f = open(file,'rb')
+    tmp = f.read(nt*8)
+    times = struct.unpack(str(nt)+'d',tmp)
+    tmp = f.read(nf*8)
+    fghz = struct.unpack(str(nf)+'d',tmp)
     tmp = f.read()
     f.close()
-    if len(tmp) != nf * nt * 4:
-        print('File size is incorrect for nt=', nt, 'and nf=', nf)
+    if len(tmp) != nf*nt*4:
+        print('File size is incorrect for nt=',nt,'and nf=',nf)
         return {}
-    data = np.array(struct.unpack(str(nt * nf) + 'f', tmp)).reshape(nf, nt)
-    return {'time': times, 'fghz': fghz, 'data': data}
+    data = np.array(struct.unpack(str(nt*nf)+'f',tmp)).reshape(nf,nt)
+    return {'time':times, 'fghz':fghz, 'data':data}
 
 
+##=========================
 def spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=True):
     """
     Rebin a spectrogram array to a new resolution in time and frequency.
@@ -411,12 +479,14 @@ def spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=True):
     return time_new, freq_new, spec_new
 
 
+##=========================
 def moving_average(data, window_size):
     # Create a convolution kernel for the moving average
     kernel = np.ones(window_size) / window_size
     return np.convolve(data, kernel, mode='valid')
 
 
+##=========================
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Fetch flarelist data from wiki and write mySQL.',
                                      epilog='Example usage:\n'
@@ -438,6 +508,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
+##=========================
 def main():
     # Parse command-line arguments
     args = parse_arguments()
@@ -464,69 +535,24 @@ def main():
         work_dir = os.path.join('.', 'eo_flarelist_update', timenow)
     os.makedirs(work_dir, exist_ok=True)
 
+
+
+    ##=========================Step 1: capture the radio peak times from flare list wiki webpage=========================
     print("##=============Step 1: capture the radio peak times from flare list wiki webpage")
     init_csv = os.path.join(work_dir, "get_time_from_wiki_given_date.csv")
     fetch_flare_data_from_wiki(EO_WIKI_URLs, timerange_strp, init_csv)
 
-    print("##=============Step 2: reformate the date and time")
-    # Read the initial CSV file
-    df = pd.read_csv(init_csv)
 
-    # Prepare lists to collect the updated data
-    new_data = {
-        "ID": [],
-        "Flare_ID": [],
-        "Date": [],
-        "Time (UT)": [],
-        "flare_class": [],
-        "GOES_flare_class": [],
-        "GOES_tstart": [],
-        "GOES_tpeak": [],
-        "GOES_tend": [],
-        # "GOES_hgc_x": [],
-        # "GOES_hgc_y": [],
-        "depec_file": [],
-        "depec_img": []
-    }
+    # ##=========================Step 2: add GOES infor to flarelist=========================
+    print("##=============Step 2: add GOES infor to flarelist")
+    # add_GOES_to_flarelist(init_csv, init_csv)
 
-    # Process each row in the DataFrame
-    for index, row in df.iterrows():
-        date = row["Date"]
-        time = f"{row['Time (UT)']}:00"  # Directly add ':00' to the time string
-        eotime_flare_wiki = f"{date.replace('/', '-')}T{time}"
+    updated_csv = init_csv
 
-        GOES_class_tp, GOES_tstart_tp, GOES_tpeak_tp, GOES_tend_tp, GOES_hgc_x_tp, GOES_hgc_y_tp = get_flare_info_from_GOES(
-            tpeak_str=eotime_flare_wiki)
 
-        flare_id_tp = eotime_flare_wiki.replace('-', '').replace('T', '').replace(':', '')
 
-        # Update the new_data dictionary
-        new_data["ID"].append(index + 1)
-        new_data["Flare_ID"].append(flare_id_tp)
-        new_data["Date"].append(date)
-        new_data["Time (UT)"].append(time)
-        new_data["flare_class"].append(row["Flare Class"])
-        new_data["GOES_flare_class"].append(GOES_class_tp)
-        new_data["GOES_tstart"].append(GOES_tstart_tp.split('.')[0])
-        new_data["GOES_tpeak"].append(GOES_tpeak_tp.split('.')[0])
-        new_data["GOES_tend"].append(GOES_tend_tp.split('.')[0])
-        # new_data["GOES_hgc_x"].append(GOES_hgc_x_tp)
-        # new_data["GOES_hgc_y"].append(GOES_hgc_y_tp)
-        new_data["depec_file"].append(str(row["depec_file"]))
-        new_data["depec_img"].append(str(row["depec_img"]))
-
-    # Create a new DataFrame from the collected data
-    new_df = pd.DataFrame(new_data)
-
-    # Save the updated DataFrame to a new CSV file.
-    updated_csv = init_csv.replace('.csv', '_updated.csv')
-    new_df.to_csv(updated_csv, index=False)
-
-    print("Times data saved to", init_csv)
-
-    ##=============Step 3: download the spectrum data from flare list wiki webpage=============
-    print("##=============Step 3: download the spectrum data from flare list wiki webpage")
-
+    ##=========================Step 3: get the spectrum data from server or EOVSA web=========================
+    print("##=============Step 3: get the spectrum data from server or EOVSA web")
     if on_server == 1:
         spec_data_dir = "/common/webplots/events/"  # YYYY/
         print("Spec data in ", spec_data_dir)
@@ -538,14 +564,18 @@ def main():
         # given_date = ['2023-09-01', '2023-09-10']
         # Iterate through the list of URLs and download files from each
         for url in datfile_urls:
-            file_name_download = download_datfiles_from_url(url, spec_data_dir, timerange)
+            file_name_download = download_datfiles_from_url(url, spec_data_dir, timerange_strp)
+    # spec.fits will be read from spec_data_dir
 
-    ##=============Step 4: plot the spectrum  and determine the start and end times of radio flux profiles=============
-    ##=============Step 4: read and plot the spectrum data=============
 
-    print("##=============Step 4: read and plot the spectrum data")
 
-    ##=============
+
+
+
+    ##=========================Step 4: plot the spectrum  and determine the start and end times of radio flux profiles=========================
+    print("##=============Step 4: read, plot the spectrum data")
+
+    ##=========================
     # Create a function to handle mouse click events
     def onclick(event):
         global click_count, x1, y1, x2, y2
@@ -563,9 +593,10 @@ def main():
         else:
             print("Please double-click to select two positions.")
 
+    ##=========================
     df = pd.read_csv(updated_csv)
     flare_id = df['Flare_ID']
-    depec_file = df['depec_file']
+    depec_file = df['depec_datafile_XP']##will use XP fits file to determine the st/ed time
 
     if on_server == 1:
         files_wiki = [spec_data_dir + str(flare_id[i])[0:4] + "/" + str(file_name) for i, file_name in
@@ -576,20 +607,21 @@ def main():
     spec_img_dir = os.path.join(work_dir, 'spec_img/')
     os.makedirs(spec_img_dir, exist_ok=True)
 
-    ##=============
+
+    ##=========================
     tpk_spec_wiki, tst_mad_spec_wiki, ted_mad_spec_wiki = [], [], []
     tst_thrd_spec_wiki, ted_thrd_spec_wiki = [], []
     tst_manu_spec_wiki, ted_manu_spec_wiki = [], []
-    flux_pk_3GHz, flux_pk_7GHz, flux_pk_11GHz, flux_pk_15GHz = [], [], [], []
-    flux_pk_totGHz, freq_at_flux_pk = [], []
+    Fpk_XP_3GHz, Fpk_XP_7GHz, Fpk_XP_11GHz, Fpk_XP_15GHz = [], [], [], []
+    Fpk_XP_totGHz, freq_at_Fpk_XP = [], []
     depec_file = []
 
-    ##=============
+    ##=========================
     for ww, file_wiki in enumerate(files_wiki):  # len(files_wiki)
 
         filename1 = os.path.basename(file_wiki)
         depec_file.append(filename1)
-        print("Spec data: ", filename1)
+        print("To read spec data: ", filename1)
 
         try:
             if filename1.split('.')[-1] == 'dat':
@@ -618,19 +650,20 @@ def main():
             tst_manu_spec_wiki.append(temp_st)
             ted_manu_spec_wiki.append(temp_ed)
 
-            flux_pk_3GHz.append(0)
-            flux_pk_7GHz.append(0)
-            flux_pk_11GHz.append(0)
-            flux_pk_15GHz.append(0)
-            flux_pk_totGHz.append(0)
-            freq_at_flux_pk.append(0)
+            Fpk_XP_3GHz.append('NA')
+            Fpk_XP_7GHz.append('NA')
+            Fpk_XP_11GHz.append('NA')
+            Fpk_XP_15GHz.append('NA')
+            Fpk_XP_totGHz.append('NA')
+            freq_at_Fpk_XP.append('NA')
             print('no data for:', file_wiki)
             continue
 
         time_spec = Time(time1, format='jd')
         time_str = time_spec.isot
 
-        ##=============try MAD method
+
+        ##=========================try MAD method
         tpk_tot_ind = []
 
         tst_tot_ind = []
@@ -653,13 +686,13 @@ def main():
             good_channel = False
             flux_array = spec[ff, :]
 
-            ##=============try MAD method
+            ##=========================try MAD method
             outlier_ind = np.where(outliers[ff])[0]
             if len(outlier_ind) > 0:
                 tst_tot_ind.append(outlier_ind[0])
                 ted_tot_ind.append(outlier_ind[-1])
 
-            ##=============try to set threshold
+            ##=========================try to set threshold
             y = moving_average(flux_array, window_size) + 0.001  ##flux_array
             peaks, _ = find_peaks(y, height=1.)
             noise_thrd_st = np.mean(y[0:5])
@@ -690,7 +723,7 @@ def main():
                             ind_tmp = ind + 5
             ted_tot_ind_thrd.append(ind_tmp)
 
-            ##=============tpeak
+            ##=========================tpeak
             tpk_tot_ind.append(np.argmax(flux_array))
 
         time_st_mad = time_spec[int(np.round(np.median(np.array(tst_tot_ind))))]
@@ -714,23 +747,44 @@ def main():
         tst_thrd_spec_wiki.append(Time(time_st_thrd, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
         ted_thrd_spec_wiki.append(Time(time_ed_thrd, format='jd').strftime('%Y-%m-%d %H:%M:%S'))
 
+
         # ##=========================get the peak flux at [3, 7, 11, 15] GHz
-        # freq_getflux = [3, 7, 11, 15]
+        # freq_getflux = [3., 7., 11., 15.]
         # time_new, freq_new, spec_new = spec_rebin(time_spec.plot_date, fghz, spec, t_step=1, f_step=1, do_mean=False)
         time_new, freq_new, spec_new = time_spec.plot_date, fghz, spec
 
-        ind = np.argmin(np.abs(freq_new - 3.))
-        flux_pk_3GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
-        ind = np.argmin(np.abs(freq_new - 7.))
-        flux_pk_7GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
-        ind = np.argmin(np.abs(freq_new - 11.))
-        flux_pk_11GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
-        ind = np.argmin(np.abs(freq_new - 15.))
-        flux_pk_15GHz.append(np.around(np.nanmax(spec_new[ind, :]), 1))
+        def get_flux_pk(flux_tmp):
+            from scipy.signal import medfilt
+            # Apply a median filter to smooth out noise in the flux curve
+            flux_tmp_smoothed = medfilt(flux_tmp, kernel_size=5)
+            # Set a threshold to filter out extreme noise
+            flux_tmp_filtered = np.where(flux_tmp_smoothed > 10000., np.nan, flux_tmp_smoothed)
+            ind = np.nanargmax(flux_tmp_filtered)
+            Fpk_tmp = flux_tmp[ind]
+            Fpk_tmp = Fpk_tmp if np.nanmax(flux_tmp)/Fpk_tmp > 100. else np.nanmax(flux_tmp)
+            # print("Fpk before and after get_flux_pk: ", np.nanmax(flux_tmp), Fpk_tmp)
+            return Fpk_tmp
 
-        flux_pk_totGHz.append(np.around(np.nanmax(spec_new), 1))
+        ind = np.argmin(np.abs(freq_new - 3.))
+        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
+        Fpk_XP_3GHz.append("{:.1f}".format(Fpk_tmp))
+
+        ind = np.argmin(np.abs(freq_new - 7.))
+        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
+        Fpk_XP_7GHz.append("{:.1f}".format(Fpk_tmp))
+
+        ind = np.argmin(np.abs(freq_new - 11.))
+        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
+        Fpk_XP_11GHz.append("{:.1f}".format(Fpk_tmp))
+
+        ind = np.argmin(np.abs(freq_new - 15.))
+        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
+        Fpk_XP_15GHz.append("{:.1f}".format(Fpk_tmp))
+
+        Fpk_XP_totGHz.append("{:.1f}".format(np.nanmax(spec_new)))
         indf, indt = np.where(spec_new == np.nanmax(spec_new))
-        freq_at_flux_pk.append(np.around(freq_new[indf[0]], 2))
+        freq_at_Fpk_XP.append(np.around(freq_new[indf[0]], 2))
+
 
         # #####==================================================plot the dynamic spectrum and flux curves
         # tim_plt = time_spec.plot_date
@@ -742,8 +796,8 @@ def main():
         # # drange = [0.01, 10]  # np.max(spec_plt)
         # drange = [0.01, np.percentile(spec_plt, 97.5)]
 
+        # #####==================================================
         # if do_manu == 1:
-        #     #####==================================================
         #     # Initialize global variables
         #     click_count = 0
         #     x1, y1, x2, y2 = 0, 0, 0, 0
@@ -878,101 +932,68 @@ def main():
         # except:
         #     print('Failed to add logos. Proceed')
         # #####==================================================
-        # figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"{filename}.png")
+        # if on_server == 1:
+        #     figname = os.path.join(spec_data_dir, time_pk_obj.strftime('%Y'), f"{filename}.png")
+        # else:
+        #     figname = os.path.join(spec_img_dir, f"{filename}.png")
         # fig.savefig(figname, dpi=FIG_DPI, transparent=False)
         # plt.close()
         # print(f'Write spectrogram to {figname}')
 
+
+
+    # #####==================================================
     data_csv = {
-        "ID": np.arange(len(flare_id)) + 1,
-        "Flare_ID": flare_id,
+        # "ID": np.arange(len(flare_id)) + 1,
+        # "Flare_ID": flare_id,
         'EO_tpeak': tpk_spec_wiki,
-        'EO_tstart_thrd': tst_thrd_spec_wiki,
-        'EO_tend_thrd': ted_thrd_spec_wiki,
-        # 'EO_tstart_manu': tst_manu_spec_wiki,
-        # 'EO_tend_manu': ted_manu_spec_wiki,
-        'EO_tstart_mad': tst_mad_spec_wiki,
-        'EO_tend_mad': ted_mad_spec_wiki,
-        'depec_file': df['depec_file'],
-        'depec_img': df['depec_img'],
-        'flux_pk_3GHz': flux_pk_3GHz,
-        'flux_pk_7GHz': flux_pk_7GHz,
-        'flux_pk_11GHz': flux_pk_11GHz,
-        'flux_pk_15GHz': flux_pk_15GHz,
-        'flux_pk_totGHz': flux_pk_totGHz,
-        'freq_at_flux_pk': freq_at_flux_pk
+        'EO_tstart': tst_thrd_spec_wiki,
+        'EO_tend': ted_thrd_spec_wiki,
+        # 'EO_tstart_thrd': tst_thrd_spec_wiki,
+        # 'EO_tend_thrd': ted_thrd_spec_wiki,
+        # # 'EO_tstart_manu': tst_manu_spec_wiki,
+        # # 'EO_tend_manu': ted_manu_spec_wiki,
+        # 'EO_tstart_mad': tst_mad_spec_wiki,
+        # 'EO_tend_mad': ted_mad_spec_wiki,
+        # # 'depec_file': depec_file,
+        'Fpk_XP_3GHz': Fpk_XP_3GHz,
+        'Fpk_XP_7GHz': Fpk_XP_7GHz,
+        'Fpk_XP_11GHz': Fpk_XP_11GHz,
+        'Fpk_XP_15GHz': Fpk_XP_15GHz,
+        'Fpk_XP_totGHz': Fpk_XP_totGHz,
+        'freq_at_Fpk_XP': freq_at_Fpk_XP
     }
 
-    df = pd.DataFrame(data_csv)
-    csv_file_trange = os.path.join(work_dir, 'get_spec_tst_ted_from_wiki_given_date.csv')
-    df.to_csv(csv_file_trange, index=False)
+    # df = pd.DataFrame(data_csv)
+    # csv_file_tsted = os.path.join(work_dir, 'get_spec_tst_ted_from_wiki_given_date.csv')
+    # df.to_csv(csv_file_tsted, index=False)
+    # print("Step 4: Times data saved to get_spec_tst_ted_from_wiki_given_date.csv")
 
-    print("Step 4: Times data saved to get_spec_tst_ted_from_wiki_given_date.csv")
 
-    print("##=============step 5: combine two files")
+    # ##=========================step 5: combined two csv files
+    print("##=============step 5: combine two csv files")
 
-    # Load data
-    df_time = pd.read_csv(updated_csv)
-    df_tst_ted = pd.read_csv(csv_file_trange)
+    # initial csv
+    df = pd.read_csv(updated_csv)
+    # Create a new DataFrame from data_csv
+    new_data_df = pd.DataFrame(data_csv)
+    # Check if the lengths match; if not, raise an error
+    if len(df) != len(new_data_df):
+        raise ValueError("Error: The lengths of the original DataFrame and new data do not match.")
+    # Concatenate the new columns to the original DataFrame
+    df = pd.concat([df, new_data_df], axis=1)
 
-    # Convert dates and times from df_time to datetime for efficient handling
-    df_time['DateTime'] = pd.to_datetime(df_time['Date'] + ' ' + df_time['Time (UT)'], format='%Y/%m/%d %H:%M:%S')
-
-    # Similarly, convert EO_tpeak in df_tst_ted to datetime
-    df_tst_ted['EO_tpeak_dt'] = pd.to_datetime(df_tst_ted['EO_tpeak'], format='%Y/%m/%d %H:%M:%S')
-
-    # Assuming we need to find the closest EO_tpeak_dt for each DateTime in df_time
-    # Initialize columns in df_time for the closest matches
-    df_time['EO_tstart'] = ""
-    df_time['EO_tpeak'] = ""
-    df_time['EO_tend'] = ""
-    df_time['depec_file'] = ""
-    df_time['depec_img'] = ""
-    df_time['flux_pk_3GHz'] = ""
-    df_time['flux_pk_7GHz'] = ""
-    df_time['flux_pk_11GHz'] = ""
-    df_time['flux_pk_15GHz'] = ""
-
-    # Convert EO_tpeak_dt to the same MJD format for comparison
-    df_tst_ted['EO_tpeak_mjd'] = [Time(row, format='datetime').mjd for row in df_tst_ted['EO_tpeak_dt']]
-
-    # For each row in df_time, find the closest date in df_tst_ted
-    for index, row in df_time.iterrows():
-        # Compute the absolute difference in times between the current row in df_time and all rows in df_tst_ted
-        time_diff = np.abs(df_tst_ted['EO_tpeak_dt'] - row['DateTime'])
-
-        # Find the index of the minimum time difference
-        closest_index = time_diff.idxmin()
-
-        # Assign the matched values from df_tst_ted to df_time
-        df_time.at[index, 'EO_tstart'] = df_tst_ted.at[closest_index, 'EO_tstart_thrd']
-        df_time.at[index, 'EO_tpeak'] = df_tst_ted.at[closest_index, 'EO_tpeak']
-        df_time.at[index, 'EO_tend'] = df_tst_ted.at[closest_index, 'EO_tend_thrd']
-        df_time.at[index, 'depec_file'] = df_tst_ted.at[closest_index, 'depec_file']
-        df_time.at[index, 'depec_img'] = df_tst_ted.at[closest_index, 'depec_img']
-        df_time.at[index, 'flux_pk_3GHz'] = df_tst_ted.at[closest_index, 'flux_pk_3GHz']
-        df_time.at[index, 'flux_pk_7GHz'] = df_tst_ted.at[closest_index, 'flux_pk_7GHz']
-        df_time.at[index, 'flux_pk_11GHz'] = df_tst_ted.at[closest_index, 'flux_pk_11GHz']
-        df_time.at[index, 'flux_pk_15GHz'] = df_tst_ted.at[closest_index, 'flux_pk_15GHz']
-
-    # Drop the temporary columns
-    df_time.drop(['GOES_flare_class', 'DateTime'], axis=1, inplace=True)
-
-    # Save the combined data to CSV
-    csv_file_comb = os.path.join(work_dir, 'get_info_from_wiki_given_date_sub.csv')
-    df_time.to_csv(csv_file_comb, index=False)
-
-    print(f"step 5: Times data saved to {csv_file_comb}")
 
     final_csv_file = os.path.join(work_dir, 'EOVSA_flare_list_from_wiki_sub.csv')
-    os.rename(csv_file_comb, final_csv_file)
-    print(f"Renamed to {final_csv_file}")
+    df.to_csv(final_csv_file, index=False)
+    print(f"Times data saved to {final_csv_file}")
 
 
-    ##=============step 6: write to MySQL 'EOVSA_flare_list_wiki_db'=============
+
+    ##=========================step 6: write to MySQL 'EOVSA_flare_list_wiki_db'=========================
     print("##=============step 6: write flare info to MySQL 'EOVSA_flare_list_wiki_db'")
 
-    ##=============get flare_id_exist from mySQL
+    ##=========================get flare_id_exist from mySQL
 
     connection = create_flare_db_connection()
 
@@ -983,7 +1004,7 @@ def main():
     cursor.close()
     connection.close()
 
-    ##=============
+    ##=========================
 
     # Connect to the database and get a cursor to access it:
     cnxn = create_flare_db_connection()
@@ -998,7 +1019,12 @@ def main():
     # The Flare_ID is automatic (just incremented from 1), so is not explicitly written.  Also, separating Date and Time doesn't make sense, so combine into a single Date:
 
     columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file', 'depec_img', \
-                'flux_pk_3GHz', 'flux_pk_7GHz', 'flux_pk_11GHz', 'flux_pk_15GHz']
+                'Fpk_XP_3GHz', 'Fpk_XP_7GHz', 'Fpk_XP_11GHz', 'Fpk_XP_15GHz']
+
+    columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', \
+                'depec_datafile_TP', 'depec_imgfile_TP', 'depec_datafile_XP', 'depec_imgfile_XP', \
+                'Fpk_XP_3GHz', 'Fpk_XP_7GHz', 'Fpk_XP_11GHz', 'Fpk_XP_15GHz']
+
 
     values = []
 
@@ -1011,22 +1037,24 @@ def main():
     EO_tstart = df['EO_tstart']
     EO_tpeak = df['EO_tpeak']
     EO_tend = df['EO_tend']
-    GOES_class = df['flare_class']
-    depec_file = df['depec_file']
-    depec_img = df['depec_img']
-    flux_pk_3GHz = df['flux_pk_3GHz']
-    flux_pk_7GHz = df['flux_pk_7GHz']
-    flux_pk_11GHz = df['flux_pk_11GHz']
-    flux_pk_15GHz = df['flux_pk_15GHz']
+    GOES_class = df['Flare_Class']
+    depec_datafile_TP = df['depec_datafile_TP']
+    depec_imgfile_TP = df['depec_imgfile_TP']
+    depec_datafile_XP = df['depec_datafile_XP']
+    depec_imgfile_XP = df['depec_imgfile_XP']
+    Fpk_XP_3GHz = df['Fpk_XP_3GHz']
+    Fpk_XP_7GHz = df['Fpk_XP_7GHz']
+    Fpk_XP_11GHz = df['Fpk_XP_11GHz']
+    Fpk_XP_15GHz = df['Fpk_XP_15GHz']
 
-    ##=============
+    ##=========================
     for i in range(len(flare_id)):
         if not any(int(flare_id[i]) == existing_flare_id[0] for existing_flare_id in flare_id_exist):
             date = Time(dates[i] + ' ' + times[i]).jd
             # newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd, EO_xcen[i], EO_ycen[i], depec_file[i]]
-            newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd,
-                       Time(EO_tend[i]).jd, str(depec_file[i]), str(depec_img[i]),
-                       flux_pk_3GHz[i], flux_pk_7GHz[i], flux_pk_11GHz[i], flux_pk_15GHz[i]]
+            newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd, 
+                       str(depec_datafile_TP[i]), str(depec_imgfile_TP[i]), str(depec_datafile_XP[i]), str(depec_imgfile_XP[i]),
+                       Fpk_XP_3GHz[i], Fpk_XP_7GHz[i], Fpk_XP_11GHz[i], Fpk_XP_15GHz[i]]
             values.append(newlist)
             print("EOVSA_flare_list_wiki_tb Update for ", int(flare_id[i]))
 
@@ -1038,15 +1066,16 @@ def main():
     cursor.executemany(put_query, values)
     cnxn.commit()  # Important!  The record will be deleted if you do not "commit" after a transaction
 
-    ##=============step 7: write to MySQL 'EOVSA_lightcurve_QL_db'=============
-    print("##=============step 7: write flare light curves to MySQL 'EOVSA_lightcurve_QL_db'")
 
-    ##=============get flare_id_exist from mySQL
+    ##=========================step 7: write to MySQL 'EOVSA_lightcurve_QL_db'=========================
+    print("##=========================step 7: write flare light curves to MySQL 'EOVSA_lightcurve_QL_db'")
+
+    ##=========================get flare_id_exist from mySQL
 
     connection = create_flare_lc_db_connection()
 
     cursor = connection.cursor()
-    cursor.execute("SELECT DISTINCT Flare_ID FROM freq_QL")
+    cursor.execute("SELECT DISTINCT Flare_ID FROM freq_QL_XP")
     flare_id_exist = cursor.fetchall()
 
     cursor.close()
@@ -1057,56 +1086,63 @@ def main():
 
     #####==================================================data preparation
 
+    def specdata_prep(dsfile_path):
+        try:
+            if dsfile_path.split('.')[-1] == 'dat':
+                data1 = rd_datfile(dsfile_path)
+                time = data1['time']  ##in jd
+                freq = np.array(data1['fghz'])
+                spec = np.array(data1['data'])
+            if dsfile_path.split('.')[-1] == 'fits':
+                eospecfits = fits.open(dsfile_path)
+                time = np.array(eospecfits[2].data['TIME'])
+                freq = np.array(eospecfits[1].data['FGHZ'])
+                spec = eospecfits[0].data
+            # time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=False)
+            time_new, freq_new, spec_new = time, freq, spec
+            freq_plt = [3, 7, 11, 15]
+            freq_QL = np.zeros(len(freq_plt))
+            spec_QL = np.zeros((len(freq_plt), len(time_new)))
+            for ff, fghz in enumerate(freq_plt):
+                ind = np.argmin(np.abs(freq_new - fghz))
+                # print(ind, fghz, freq_new[ind])
+                freq_QL[ff] = freq_new[ind]
+                spec_QL[ff, :] = spec_new[ind, :]
+            time_QL = time_new
+        except Exception as e:
+            print(f"Errors of reading data {dsfile_path} - flux set to be 0")
+            date_list = []
+            for mm in range(20):
+                date_list.append(datetp + timedelta(seconds=12 * mm))
+            time_QL = [date_obj.toordinal() + 1721425.5 for date_obj in date_list]
+            freq_QL = [3, 7, 11, 15]
+            spec_QL = np.zeros((len(freq_QL), len(time_QL))) + 1e-3
+        return time_QL, freq_QL, spec_QL
+
+
+    #####==================================================
     df = pd.read_csv(final_csv_file)
     flare_id_tot = df['Flare_ID']
-    depec_file_tot = df['depec_file']
     EO_tpeak_tot = df['EO_tpeak']
+    depec_file_tp_tot = df['depec_datafile_TP']
+    depec_file_xp_tot = df['depec_datafile_XP']
 
     for i, date_str in enumerate(EO_tpeak_tot):
         datetp = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
 
         if not any(int(flare_id_tot[i]) == existing_flare_id[0] for existing_flare_id in flare_id_exist):
             # if given_date[0] <= datetp <= given_date[1]:  # Check if the date is within the given range
-            print("Flare_ID", int(flare_id_tot[i]))
             Flare_ID = int(flare_id_tot[i])
-            depec_file = str(depec_file_tot[i])
+            print(f"Flare_ID {Flare_ID}")
 
-            dsfile_path = '/common/webplots/events/' + str(Flare_ID)[0:4] + '/' + depec_file
-            try:
-                if dsfile_path.split('.')[-1] == 'dat':
-                    data1 = rd_datfile(dsfile_path)
-                    time = data1['time']  ##in jd
-                    freq = np.array(data1['fghz'])
-                    spec = np.array(data1['data'])
+            dsfile_path_tp = '/common/webplots/events/' + str(Flare_ID)[0:4] + '/' + str(depec_file_tp_tot[i])
+            time_QL_tp, freq_QL_tp, spec_QL_tp = specdata_prep(dsfile_path_tp)
 
-                if dsfile_path.split('.')[-1] == 'fits':
-                    eospecfits = fits.open(dsfile_path)
-                    time = np.array(eospecfits[2].data['TIME'])
-                    freq = np.array(eospecfits[1].data['FGHZ'])
-                    spec = eospecfits[0].data
+            dsfile_path_xp = '/common/webplots/events/' + str(Flare_ID)[0:4] + '/' + str(depec_file_xp_tot[i])
+            time_QL_xp, freq_QL_xp, spec_QL_xp = specdata_prep(dsfile_path_xp)
 
-                time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=False)
 
-                freq_plt = [3, 7, 11, 15]
-                freq_QL = np.zeros(len(freq_plt))
-                spec_QL = np.zeros((len(freq_plt), len(time_new)))
-
-                for ff, fghz in enumerate(freq_plt):
-                    ind = np.argmin(np.abs(freq_new - fghz))
-                    # print(ind, fghz, freq_new[ind])
-                    freq_QL[ff] = freq_new[ind]
-                    spec_QL[ff, :] = spec_new[ind, :]
-
-                time_QL = time_new
-            except Exception as e:
-                print(f"Errors of reading data {dsfile_path} - flux set to be 0")
-                date_list = []
-                for mm in range(20):
-                    date_list.append(datetp + timedelta(seconds=12 * mm))
-                time_QL = [date_obj.toordinal() + 1721425.5 for date_obj in date_list]
-                freq_QL = [3, 7, 11, 15]
-                spec_QL = np.zeros((len(freq_QL), len(time_QL))) + 1e-3
-
+            #####==================================================
             cursor = cnxn.cursor()
             select_query = "SELECT * FROM Flare_IDs WHERE Flare_ID = %s"
             cursor.execute(select_query, (Flare_ID,))
@@ -1123,28 +1159,53 @@ def main():
             cnxn.commit()
             cursor.close()
 
-            #####=============
+            #####==================================================for TP spec data
             cursor = cnxn.cursor()
-            for index, value in enumerate(time_QL):
+            for index, value in enumerate(time_QL_tp):
                 jd_time = value  # Time(value).jd
-                cursor.execute("INSERT INTO time_QL VALUES (%s, %s, %s)", (Flare_ID, index, jd_time))
+                cursor.execute("INSERT INTO time_QL_TP VALUES (%s, %s, %s)", (Flare_ID, index, jd_time))
             cnxn.commit()
             cursor.close()
 
             #####=============
             cursor = cnxn.cursor()
-            for index, value in enumerate(freq_QL):
-                cursor.execute("INSERT INTO freq_QL VALUES (%s, %s, %s)", (Flare_ID, index, round(value, 3)))
+            for index, value in enumerate(freq_QL_tp):
+                cursor.execute("INSERT INTO freq_QL_TP VALUES (%s, %s, %s)", (Flare_ID, index, round(value, 3)))
             cnxn.commit()
             cursor.close()
 
             #####=============
             cursor = cnxn.cursor()
-            for ff, row in enumerate(spec_QL):
+            for ff, row in enumerate(spec_QL_tp):
                 # print(ff, len(row))
                 for tt, value in enumerate(row):
                     value = round(value, 3) if not np.isnan(value) else None  # Replace nan with None
-                    cursor.execute("INSERT INTO flux_QL VALUES (%s, %s, %s, %s)", (Flare_ID, ff, tt, value))
+                    cursor.execute("INSERT INTO flux_QL_TP VALUES (%s, %s, %s, %s)", (Flare_ID, ff, tt, value))
+            cnxn.commit()
+            cursor.close()
+
+            #####==================================================for XP spec data
+            cursor = cnxn.cursor()
+            for index, value in enumerate(time_QL_xp):
+                jd_time = value  # Time(value).jd
+                cursor.execute("INSERT INTO time_QL_XP VALUES (%s, %s, %s)", (Flare_ID, index, jd_time))
+            cnxn.commit()
+            cursor.close()
+
+            #####=============
+            cursor = cnxn.cursor()
+            for index, value in enumerate(freq_QL_xp):
+                cursor.execute("INSERT INTO freq_QL_XP VALUES (%s, %s, %s)", (Flare_ID, index, round(value, 3)))
+            cnxn.commit()
+            cursor.close()
+
+            #####=============
+            cursor = cnxn.cursor()
+            for ff, row in enumerate(spec_QL_xp):
+                # print(ff, len(row))
+                for tt, value in enumerate(row):
+                    value = round(value, 3) if not np.isnan(value) else None  # Replace nan with None
+                    cursor.execute("INSERT INTO flux_QL_XP VALUES (%s, %s, %s, %s)", (Flare_ID, ff, tt, value))
             cnxn.commit()
             cursor.close()
 
