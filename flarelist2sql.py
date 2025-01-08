@@ -29,35 +29,18 @@ import warnings
 from matplotlib import MatplotlibDeprecationWarning
 warnings.filterwarnings('ignore', category=FutureWarning)
 
+current_year = datetime.now().year
 
 ##=========================
 # Global settings and initializations
 # EO_WIKI_URL = "http://www.ovsa.njit.edu/wiki/index.php/Recent_Flare_List_(2021-)"
-EO_WIKI_URLs = [
-    "https://www.ovsa.njit.edu/wiki/index.php/2017",
-    "https://www.ovsa.njit.edu/wiki/index.php/2018",
-    "https://www.ovsa.njit.edu/wiki/index.php/2019",
-    "https://www.ovsa.njit.edu/wiki/index.php/2020",
-    "https://www.ovsa.njit.edu/wiki/index.php/2021",
-    "https://www.ovsa.njit.edu/wiki/index.php/2022",
-    "https://www.ovsa.njit.edu/wiki/index.php/2023",
-    "https://www.ovsa.njit.edu/wiki/index.php/2024",
-    "https://www.ovsa.njit.edu/wiki/index.php/2025"
-]
+wiki_base_url = "https://www.ovsa.njit.edu/wiki/index.php/"
+EO_WIKI_URLs = [f"{wiki_base_url}{year}" for year in range(2017, current_year + 1)]
 
 ##=========================dat data
 ## List of URLs to download files from. this is not needed if running the code on ovsa and pipeline.
-datfile_urls = [
-    "http://ovsa.njit.edu/events/2017/",
-    "http://ovsa.njit.edu/events/2018/",
-    "http://ovsa.njit.edu/events/2019/",
-    "http://ovsa.njit.edu/events/2020/",
-    "http://ovsa.njit.edu/events/2021/",
-    "http://ovsa.njit.edu/events/2022/",
-    "http://ovsa.njit.edu/events/2023/",
-    "http://ovsa.njit.edu/events/2024/",
-    "http://ovsa.njit.edu/events/2025/"
-]
+datfile_base_url = "http://ovsa.njit.edu/events/"
+datfile_urls = [f"{datfile_base_url}{year}/" for year in range(2017, current_year + 1)]
 
 ## plotting config
 fontsize_pl = 14.
