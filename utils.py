@@ -20,76 +20,127 @@ def create_flare_lc_db_connection():
         password=os.getenv('FLARE_DB_PASSWORD')
     )
 
-def delete_flare_id_inSQL(flare_id):
-    # Connect to the databases
-    connection_db = create_flare_db_connection()    
+def get_eo_flare_id_inSQL(timerange=['2021-05-01T00:00:00', '2021-06-01T00:00:00']):
+    from astropy.time import Time
+    # Convert timerange to Julian Dates
+    start_time = Time(timerange[0]).jd
+    end_time = Time(timerange[1]).jd
+    # Connect the database
+    connection_db = create_flare_db_connection()
+    cursor = connection_db.cursor()
+    # Query Flare_ID and EO_tpeak within the time range
+    cursor.execute("""
+        SELECT Flare_ID FROM EOVSA_flare_list_wiki_tb
+        WHERE EO_tpeak BETWEEN %s AND %s
+    """, (start_time, end_time))
+    # Get Flare_ID in string list    
+    flare_ids = cursor.fetchall()
+    flare_ids_filtered = [str(f[0]) for f in flare_ids] if flare_ids else []  # Ensure format string list
+    # Close the database connection
+    cursor.close()
+    connection_db.close()
+    print(f"Get {len(flare_ids_filtered)} EO Flare_IDs in SQL database")
+    return flare_ids_filtered
+# # Example usage
+# flare_ids = get_eo_flare_id_inSQL(timerange=['2021-05-01T10:00:00', '2021-06-01T10:00:00'])
+
+
+
+def delete_eo_flare_id_inSQL(flare_ids=['']):
+    '''To delete flare id inSQL, works for a given flare_ids string list
+    '''
+    connection_db = create_flare_db_connection()
+    cursor_db = None
+
     try:
-        # Check if flare_id exists in the db database
         cursor_db = connection_db.cursor()
-        check_query_db = "SELECT Flare_ID FROM EOVSA_flare_list_wiki_tb WHERE Flare_ID = %s"
-        cursor_db.execute(check_query_db, (flare_id,))
-        flare_exists_db = cursor_db.fetchone()
-        
-        if flare_exists_db:
-            # Delete from EOVSA_flare_list_wiki_tb table in the db database
-            delete_wiki_tb_query = "DELETE FROM EOVSA_flare_list_wiki_tb WHERE Flare_ID = %s"
-            cursor_db.execute(delete_wiki_tb_query, (flare_id,))
-            connection_db.commit()
-            
-            print(f"Deleted flare list table for Flare_ID: {flare_id}")
-        else:
-            print(f"Flare_ID {flare_id} does not exist in DB database")
-        
-        cursor_db.close()
-        connection_db.close()
+        for flare_id in flare_ids:
+            try:
+                # SELECT: must consume results
+                check_query_db = "SELECT Flare_ID FROM EOVSA_flare_list_wiki_tb WHERE Flare_ID = %s"
+                cursor_db.execute(check_query_db, (flare_id,))
+                flare_exists_db = cursor_db.fetchone()  # ensures result is read
+                while cursor_db.nextset():
+                    pass
+                if flare_exists_db:
+                    delete_query = "DELETE FROM EOVSA_flare_list_wiki_tb WHERE Flare_ID = %s"
+                    cursor_db.execute(delete_query, (flare_id,))
+                    print(f"Deleted flare list table for Flare_ID: {flare_id}")
+                else:
+                    print(f"Flare_ID {flare_id} does not exist in DB database")
+            except mysql.connector.Error as err:
+                print(f"Error processing Flare_ID {flare_id}: {err}")
+                try:
+                    # Try to clear unread results to continue processing next ID
+                    while cursor_db.nextset():
+                        pass
+                except:
+                    pass
+        connection_db.commit()
+
     except mysql.connector.Error as err:
-        print(f"Error: {err}")
+        print(f"DB Connection Error: {err}")
+
+    finally:
+        # Close cursor first
+        if cursor_db:
+            try:
+                cursor_db.close()
+            except mysql.connector.Error as err:
+                print(f"Error closing cursor_db: {err}")
+        # Avoid "Unread result" error by skipping is_connected()
+        try:
+            connection_db.close()
+        except mysql.connector.Error as err:
+            print(f"Error closing connection_db: {err}")
 
 
+    #####for light curves
     connection_lc = create_flare_lc_db_connection()
     try:
         # Check if flare_id exists in the lc database
         cursor_lc = connection_lc.cursor()
-        check_query_lc = "SELECT Flare_ID FROM Flare_IDs WHERE Flare_ID = %s"
-        cursor_lc.execute(check_query_lc, (flare_id,))
-        flare_exists_lc = cursor_lc.fetchone()
-        
-        if flare_exists_lc:
-            # Delete from time_QL, freq_QL, and flux_QL tables in the lc database
-            delete_time_ql_query = "DELETE FROM time_QL WHERE Flare_ID = %s"
-            cursor_lc.execute(delete_time_ql_query, (flare_id,))
-            connection_lc.commit()
-            
-            delete_freq_ql_query = "DELETE FROM freq_QL WHERE Flare_ID = %s"
-            cursor_lc.execute(delete_freq_ql_query, (flare_id,))
-            connection_lc.commit()
-            
-            delete_flux_ql_query = "DELETE FROM flux_QL WHERE Flare_ID = %s"
-            cursor_lc.execute(delete_flux_ql_query, (flare_id,))
-            connection_lc.commit()
+        queries = [
+            "DELETE FROM time_QL_TP WHERE Flare_ID = %s",
+            "DELETE FROM freq_QL_TP WHERE Flare_ID = %s",
+            "DELETE FROM flux_QL_TP WHERE Flare_ID = %s",
+            "DELETE FROM time_QL_XP WHERE Flare_ID = %s",
+            "DELETE FROM freq_QL_XP WHERE Flare_ID = %s",
+            "DELETE FROM flux_QL_XP WHERE Flare_ID = %s",            
+            "DELETE FROM Flare_IDs WHERE Flare_ID = %s"           
+        ]
+        for flare_id in flare_ids:
+            check_query_lc = "SELECT Flare_ID FROM Flare_IDs WHERE Flare_ID = %s"
+            cursor_lc.execute(check_query_lc, (flare_id,))
+            flare_exists_lc = cursor_lc.fetchone()
 
-            delete_flare_ids_query = "DELETE FROM Flare_IDs WHERE Flare_ID = %s"
-            cursor_lc.execute(delete_flare_ids_query, (flare_id,))
-            connection_lc.commit()
-
-            print(f"Deleted flare LC information for Flare_ID: {flare_id}")
-        else:
-            print(f"Flare_ID {flare_id} does not exist in LC database")
-        
+            if flare_exists_lc:
+                for query in queries:
+                    cursor_lc.execute(query, (flare_id,))
+                print(f"Deleted flare LC information for Flare_ID: {flare_id}")
+            else:
+                print(f"Flare_ID {flare_id} does not exist in LC database")
+        # Commit once after all deletions
+        connection_lc.commit()
         cursor_lc.close()
         connection_lc.close()
+
     except mysql.connector.Error as err:
         print(f"Error: {err}")
 
     finally:
-        # Ensure both connections are closed if an error occurs
         if connection_lc.is_connected():
-            connection_lc.close()
-        if connection_db.is_connected():
-            connection_db.close()
+            try:
+                connection_lc.close()
+            except mysql.connector.Error as err:
+                print(f"Error closing connection_lc: {err}")
 
 # # Example usage
-# delete_flare_id_inSQL('20240731193000')
+# delete_eo_flare_id_inSQL(flare_ids=['20240731193000', '20240731193000'])
+
+# flare_ids = get_eo_flare_id_inSQL(timerange=['2021-05-01T10:00:00', '2021-06-01T10:00:00'])
+# delete_eo_flare_id_inSQL(flare_ids=flare_ids)
+
 
 
 #####==================================================
