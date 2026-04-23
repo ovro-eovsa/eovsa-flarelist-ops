@@ -52,6 +52,7 @@ A cronbjob is set up to run the script every 6 hours, with logs written to `$HOM
 ```crontab
 0 */6 * * * /bin/bash -c 'cd /home/sjyu/eovsa-flarelist-ops && ./run_flarelist2sql.sh -t "$(date -d "2 days ago" "+\%Y-\%m-\%d \%H:\%M:\%S")" "$(date "+\%Y-\%m-\%d \%H:\%M:\%S")"' >> $HOME/flarelist_update.log 2>&1
 ```
+Note: cron requires escaping `%` as `\\%`. Depending on how the command is invoked, those backslashes can survive into the expanded `date` output; `flarelist2sql.py` strips them before parsing.
 
 ## License
 

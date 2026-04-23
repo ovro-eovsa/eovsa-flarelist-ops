@@ -7,29 +7,55 @@ from bs4 import BeautifulSoup
 import re
 import os
 import sys
-from scipy.signal import find_peaks
-import matplotlib
-import argparse
-
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from matplotlib.dates import AutoDateFormatter, AutoDateLocator, num2date
-import matplotlib.cm
-# import matplotlib.image as mpimg
-import pandas as pd
-import numpy as np
-from PIL import Image
 from datetime import datetime, timedelta
-from astropy.time import Time
-from astropy.io import fits
-import mysql.connector
+import argparse
+# Defer heavy scientific imports to runtime so argument parsing/--help still works
+# even when the local Python scientific stack is misconfigured.
+_DEPENDENCY_IMPORT_ERROR = None
+
+try:
+    from scipy.signal import find_peaks
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    from matplotlib.dates import AutoDateFormatter, AutoDateLocator, num2date
+    import matplotlib.cm
+    # import matplotlib.image as mpimg
+    import pandas as pd
+    import numpy as np
+    from PIL import Image
+    from astropy.time import Time
+    from astropy.io import fits
+    import mysql.connector
+except Exception as _import_exc:
+    _DEPENDENCY_IMPORT_ERROR = _import_exc
+    find_peaks = None
+    matplotlib = None
+    plt = None
+    mcolors = None
+    AutoDateFormatter = None
+    AutoDateLocator = None
+    num2date = None
+    pd = None
+    np = None
+    Image = None
+    Time = None
+    fits = None
+    mysql = None
 
 import warnings
-from matplotlib import MatplotlibDeprecationWarning
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 current_year = datetime.now().year
+
+
+def _to_python_scalar(val):
+    if pd.isna(val):
+        return None
+    if isinstance(val, np.generic):
+        return val.item()
+    return val
 
 ##=========================
 # Global settings and initializations
@@ -64,6 +90,19 @@ def create_flare_lc_db_connection():
         user=os.getenv('FLARE_DB_USER'),
         password=os.getenv('FLARE_DB_PASSWORD')
     )
+
+
+def check_url_exists(url, timeout=5):
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=timeout)
+        if response.status_code == 200:
+            return True
+        if url.endswith('/'):
+            response = requests.get(url, allow_redirects=True, timeout=timeout)
+            return response.status_code == 200
+        return False
+    except requests.RequestException:
+        return False
 
 
 ##=========================add EOVSA log to the spec plotting
@@ -119,7 +158,7 @@ except:
 
 
 ##=========================
-def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
+def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile, debug_wiki=False):
     """
     Fetches flare data from the given wiki URLs and saves it to a CSV file in the specified directory.
 
@@ -135,6 +174,24 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
     date_data, time_ut_data, flare_class_data, flare_ID_data = [], [], [], []
     depec_imgfile_XP, depec_datafile_XP = [], []
     depec_imgfile_TP, depec_datafile_TP = [], []
+    debug_rows = []
+
+    def _normalize_datetime(date_str, time_str):
+        date_clean = date_str.strip().replace('/', '-')
+        time_clean = time_str.strip()
+        time_clean = time_clean.replace('UTC', '').replace('UT', '').strip()
+        if re.match(r'^\d{2}:\d{2}$', time_clean):
+            time_clean = f"{time_clean}:00"
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+            try:
+                return datetime.strptime(f"{date_clean} {time_clean}", fmt)
+            except ValueError:
+                pass
+        return None
+
+    def _clean_file_name(name):
+        name = requests.utils.unquote(os.path.basename(str(name).split('?')[0]))
+        return re.sub(r'^\d+px-', '', name)
 
     for eo_wiki_url in eo_wiki_urls:
         response = requests.get(eo_wiki_url)
@@ -152,53 +209,89 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
                         date = cells[0].text.strip()
                         time_ut = cells[1].text.strip()
                         flare_class = cells[2].text.strip()
-                        datetime_strp = datetime.strptime(date + ' ' + time_ut, '%Y-%m-%d %H:%M')
+                        datetime_strp = _normalize_datetime(date, time_ut)
+                        if datetime_strp is None:
+                            if debug_wiki:
+                                debug_rows.append({
+                                    'wiki_url': eo_wiki_url,
+                                    'date_raw': date,
+                                    'time_raw': time_ut,
+                                    'flare_class_raw': flare_class,
+                                    'reason': 'datetime_parse_failed',
+                                    'row_text': row.get_text(' ', strip=True)
+                                })
+                            continue
 
                         if given_date_strp[0] <= datetime_strp <= given_date_strp[1]:
                             # Get Date, Time (UT), and Flare Class
-                            date_data.append(date)
-                            time_ut_data.append(f"{time_ut}:00")
+                            date_norm = datetime_strp.strftime('%Y-%m-%d')
+                            time_norm = datetime_strp.strftime('%H:%M:%S')
+                            date_data.append(date_norm)
+                            time_ut_data.append(time_norm)
                             flare_class_data.append(flare_class)
 
                             # Get Flare_ID
-                            eotime = f"{date.replace('/', '-')}T{time_ut}:00"
+                            eotime = f"{date_norm}T{time_norm}"
                             flare_ID_data.append(eotime.replace('-', '').replace('T', '').replace(':', ''))
                             print("Fetched: ", eotime)
 
                             # Initialize placeholders for spectrogram files
                             imgfile_XP, datafile_XP, imgfile_TP, datafile_TP = '', '', '', ''
                             
-                            # Extracting spectrogram data files based on file names
-                            for cell in cells:
-                                # Find external links to data files
-                                link_cell = cell.find('a', class_='external text', href=True, rel='nofollow')
+                            link_files = []
+                            image_files = []
 
-                                if link_cell:
-                                    url = link_cell['href']
-                                    file_name = url.split('/')[-1]
-                                    if "eovsa.spec_xp." in file_name or "eovsa.spec." in file_name:
-                                        if file_name.endswith(".dat") or file_name.endswith(".fits"):
-                                            datafile_XP = file_name
-                                    if "eovsa.spec_tp" in file_name:
-                                        if file_name.endswith(".dat") or file_name.endswith(".fits"):
-                                            datafile_TP = file_name
+                            for link in row.find_all('a', href=True):
+                                href = str(link.get('href', ''))
+                                if not href:
+                                    continue
+                                href_file = _clean_file_name(href)
+                                if href_file and '.' in href_file:
+                                    link_files.append(href_file)
 
-                            # Extracting spectrogram image files based on file names
-                            for cell in cells:
-                                img_tag = cell.find('img')
-                                if img_tag:
-                                    src_attribute = img_tag.get('src')
-                                    if src_attribute:
-                                        file_name = src_attribute.split('/')[-1]
+                                # MediaWiki usually links thumbnails through /wiki/File:<name>.
+                                if 'File:' in href:
+                                    wiki_file = _clean_file_name(href.split('File:')[-1])
+                                    if wiki_file.lower().endswith('.png'):
+                                        image_files.append(wiki_file)
+
+                            for img_tag in row.find_all('img'):
+                                src_attribute = img_tag.get('src')
+                                if src_attribute:
+                                    image_files.append(_clean_file_name(src_attribute))
+
+                            for file_name in link_files:
+                                file_low = file_name.lower()
+                                if file_low.endswith(('.dat', '.fits')):
+                                    if ('eovsa.spec_tp' in file_low) and not datafile_TP:
+                                        datafile_TP = file_name
+                                    if (('eovsa.spec_xp.' in file_low) or ('eovsa.spec.' in file_low)) and not datafile_XP:
+                                        datafile_XP = file_name
+
+                            for file_name in image_files:
+                                file_low = file_name.lower()
+                                if file_low.endswith('.png'):
+                                    if ('.spec_tp.' in file_low) and not imgfile_TP:
+                                        imgfile_TP = file_name
+                                    if (('.spec_xp.' in file_low) or ('.spec.' in file_low)) and not imgfile_XP:
                                         imgfile_XP = file_name
-                                        if ".spec_tp." in file_name and file_name.endswith(".png"):
-                                            imgfile_TP = file_name  # Assign TP-specific file to imgfile_TP
-                                        if ".spec_xp." in file_name and file_name.endswith(".png"):
-                                            imgfile_XP = file_name  # Assign XP-specific file to imgfile_XP
-                                        if ".spec." in file_name and file_name.endswith(".png"):
-                                            imgfile_XP = file_name  # Assign XP-specific file to imgfile_XP
 
                             print(date, time_ut, flare_class, imgfile_XP, datafile_XP)
+                            if debug_wiki and (not datafile_XP or not imgfile_XP):
+                                debug_rows.append({
+                                    'wiki_url': eo_wiki_url,
+                                    'date': date_norm,
+                                    'time_ut': time_norm,
+                                    'flare_class': flare_class,
+                                    'datafile_tp': datafile_TP,
+                                    'imgfile_tp': imgfile_TP,
+                                    'datafile_xp': datafile_XP,
+                                    'imgfile_xp': imgfile_XP,
+                                    'link_files': ';'.join(sorted(set(link_files))),
+                                    'image_files': ';'.join(sorted(set(image_files))),
+                                    'reason': 'missing_xp_or_image',
+                                    'row_text': row.get_text(' ', strip=True)
+                                })
                             # Append extracted file names to respective lists
                             depec_imgfile_TP.append(imgfile_TP)
                             depec_datafile_TP.append(datafile_TP)
@@ -206,7 +299,10 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
                             depec_datafile_XP.append(datafile_XP)
 
         else:
-            print("Failed to retrieve the webpage. Status code:", response.status_code)
+            if response.status_code == 404:
+                print(f"Wiki page not found (404), skipping: {eo_wiki_url}")
+            else:
+                print(f"Failed to retrieve the webpage {eo_wiki_url}. Status code: {response.status_code}")
 
     # Reformatting and saving collected data into a DataFrame
     data = {
@@ -223,6 +319,10 @@ def fetch_flare_data_from_wiki(eo_wiki_urls, given_date_strp, outcsvfile):
     df = pd.DataFrame(data)
     df.to_csv(outcsvfile, index=False)
     print(f"Data saved to {outcsvfile}")
+    if debug_wiki and debug_rows:
+        debug_file = os.path.splitext(outcsvfile)[0] + '_wiki_debug.csv'
+        pd.DataFrame(debug_rows).to_csv(debug_file, index=False)
+        print(f"Debug wiki parse data saved to {debug_file}")
     return
 
 ##=========================
@@ -390,7 +490,7 @@ def download_datfiles_from_url(url, download_directory, timerange_strp):
                         except Exception as e:
                             print(f"Failed to download: {file_name} - {str(e)}")
     else:
-        print(f"Failed to retrieve the webpage. Status code: {response.status_code}")
+        print(f"Failed to retrieve the webpage {url}. Status code: {response.status_code}")
     return file_name_download
 
 
@@ -433,7 +533,7 @@ def rd_datfile(file):
     return {'time':times, 'fghz':fghz, 'data':data}
 
 
-##=========================
+
 def spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=True):
     """
     Rebin a spectrogram array to a new resolution in time and frequency.
@@ -447,7 +547,7 @@ def spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=True):
 
     spec_new = np.zeros((fnum_steps, tnum_steps))
 
-    # Rebin the spectrogram
+
     if do_mean:
         for i in range(fnum_steps):
             for j in range(tnum_steps):
@@ -462,12 +562,77 @@ def spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=True):
     return time_new, freq_new, spec_new
 
 
-##=========================
+
 def moving_average(data, window_size):
     # Create a convolution kernel for the moving average
     kernel = np.ones(window_size) / window_size
     return np.convolve(data, kernel, mode='valid')
 
+
+def despike_small_blobs(data, win=11, n_sigmas=4, max_blob_size=10):
+    """
+    Remove small high-value spikes, keep large coherent structures (e.g. burst).
+
+    Parameters
+    ----------
+    data : 2D array
+    win : int
+        Window size for local median/MAD.
+    n_sigmas : float
+        Sigma threshold above local median to flag candidate spikes.
+    max_blob_size : int
+        Maximum number of connected pixels treated as a 'spike'.
+        Larger blobs are kept (assumed to be real signal).
+    """
+    from scipy.ndimage import median_filter, label
+    data = np.asarray(data)
+
+    # robust local stats
+    med = median_filter(data, size=(win, win), mode='reflect')
+    mad = 1.4826 * median_filter(np.abs(data - med), size=(win, win), mode='reflect')
+    mad[mad == 0] = np.nanmedian(mad)  # avoid divide-by-zero
+
+    z = (data - med) / mad
+    candidate_mask = z > n_sigmas     # high positive outliers
+
+    # label connected regions of candidate spikes
+    labeled, nlab = label(candidate_mask)
+    if nlab == 0:
+        return data
+
+    # build mask of *small* blobs only
+    blob_sizes = np.bincount(labeled.ravel())
+    # label 0 is background, ignore it
+    small_blob_ids = np.where(blob_sizes < max_blob_size)[0]
+    small_blob_ids = small_blob_ids[small_blob_ids != 0]
+
+    small_blob_mask = np.isin(labeled, small_blob_ids)
+
+    # replace only small blobs with local median
+    cleaned = np.where(small_blob_mask, med, data)
+    return cleaned
+
+def hampel_2d_vertical(data, window_size=15, n_sigmas=3):
+    from scipy.ndimage import median_filter
+
+    data = np.asarray(data)
+    
+    med = median_filter(data, size=(window_size, 1), mode='reflect')
+    mad = 1.4826 * median_filter(np.abs(data - med), size=(window_size, 1), mode='reflect')
+    mask = np.abs(data - med) > n_sigmas * mad
+    return np.where(mask, med, data)
+
+def hampel_2d_(data, win_vert=15, win_horiz=15, n_sigmas=3):
+    data = np.asarray(data)
+    tmp = hampel_2d_vertical(data, window_size=win_vert, n_sigmas=n_sigmas)
+    tmp = hampel_2d_vertical(tmp.T, window_size=win_horiz, n_sigmas=n_sigmas).T
+
+    tmp = despike_small_blobs(tmp,
+                              win=11,  # local window (tune)
+                              n_sigmas=4,  # threshold for spikes
+                              max_blob_size=8)  # "spike" = <8 pixels
+
+    return tmp
 
 ##=========================
 def parse_arguments():
@@ -483,10 +648,14 @@ def parse_arguments():
     parser.add_argument('--timerange', '-t', type=str, nargs=2,
                         default=[(datetime.utcnow() - timedelta(days=7)).strftime('%Y-%m-%d 13:00:00'),
                                  datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')],
-                        help='Time range for the analysis, formatted as "YYYY-MM-DD HH:MM:SS YYYY-MM-DD HH:MM:SS".\nDefaults to 7 days ago from 13:00 UT to now.')
+                        help='Time range for the analysis, formatted as "YYYY-MM-DD HH:MM:SS YYYY-MM-DD HH:MM:SS".\n'
+                             'Backslashes (e.g., from cron-escaped date output) are tolerated.\n'
+                             'Defaults to 7 days ago from 13:00 UT to now.')
 
     parser.add_argument('--do_manu', type=int, default=0,
                         help='Manually determine the start/end time of the radio burst by clicking on the Dspec.\nDefault: 0.')
+    parser.add_argument('--debug_wiki', type=int, default=0,
+                        help='Enable verbose wiki parsing diagnostics and write *_wiki_debug.csv.\nDefault: 0.')
 
     return parser.parse_args()
 
@@ -495,12 +664,38 @@ def parse_arguments():
 def main():
     # Parse command-line arguments
     args = parse_arguments()
+    if _DEPENDENCY_IMPORT_ERROR is not None:
+        raise RuntimeError(
+            "Failed to import required scientific dependencies. "
+            "This often means the active Python interpreter/architecture does not match installed packages. "
+            "Example: x86_64 python with arm64 NumPy wheels. "
+            "Run with a matching Python environment, then retry."
+        ) from _DEPENDENCY_IMPORT_ERROR
 
     timerange = args.timerange
     do_manu = args.do_manu
+    debug_wiki = bool(args.debug_wiki)
+
+    def _parse_timerange_datetime(value: str) -> datetime:
+        value = value.strip()
+        # Some schedulers (e.g., cron) require escaping '%' as '\\%'. Depending on how the command is invoked,
+        # those backslashes can survive into the expanded `date` output, producing strings like:
+        #   "\\2026-\\01-\\05 \\15:\\46:\\06"
+        # Strip backslashes so the canonical format parses cleanly.
+        if "\\" in value:
+            value = value.replace("\\", "")
+
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                pass
+        raise ValueError(
+            f'Invalid datetime value: {value!r}. Expected "YYYY-MM-DD HH:MM:SS" (or "YYYY-MM-DDTHH:MM:SS").'
+        )
 
     # Convert timerange strings to datetime objects for internal use
-    timerange_strp = [datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S') for date_str in timerange]
+    timerange_strp = [_parse_timerange_datetime(date_str) for date_str in timerange]
 
     print(f"Fetching data for time range {timerange[0]} to {timerange[1]} with manual mode set to {do_manu}")
 
@@ -523,7 +718,7 @@ def main():
     ##=========================Step 1: capture the radio peak times from flare list wiki webpage=========================
     print("##=============Step 1: capture the radio peak times from flare list wiki webpage")
     init_csv = os.path.join(work_dir, "get_time_from_wiki_given_date.csv")
-    fetch_flare_data_from_wiki(EO_WIKI_URLs, timerange_strp, init_csv)
+    fetch_flare_data_from_wiki(EO_WIKI_URLs, timerange_strp, init_csv, debug_wiki=debug_wiki)
 
 
     # ##=========================Step 2: add GOES infor to flarelist=========================
@@ -596,11 +791,31 @@ def main():
     tst_thrd_spec_wiki, ted_thrd_spec_wiki = [], []
     tst_manu_spec_wiki, ted_manu_spec_wiki = [], []
     Fpk_XP_3GHz, Fpk_XP_7GHz, Fpk_XP_11GHz, Fpk_XP_15GHz = [], [], [], []
-    Fpk_XP_totGHz, freq_at_Fpk_XP = [], []
+    Fpk_XP, freq_at_Fpk_XP = [], []
+    has_ql_movie, has_fits = [], []
     depec_file = []
+    Fpk_over_10sfu = []
+    url_exists_cache = {}
 
     ##=========================
     for ww, file_wiki in enumerate(files_wiki):  # len(files_wiki)
+        flare_id_str = str(flare_id[ww])
+        movie_url = (
+            f'https://www.ovsa.njit.edu/SynopticImg/eovsamedia/eovsa-browser/'
+            f'{flare_id_str[0:4]}/{flare_id_str[4:6]}/{flare_id_str[6:8]}/'
+            f'eovsa.lev1_mbd_12s.flare_id_{flare_id_str}.mp4'
+        )
+        fits_url = (
+            f'https://www.ovsa.njit.edu/fits/flares/'
+            f'{flare_id_str[0:4]}/{flare_id_str[4:6]}/{flare_id_str[6:8]}/{flare_id_str}/'
+        )
+
+        if movie_url not in url_exists_cache:
+            url_exists_cache[movie_url] = int(check_url_exists(movie_url))
+        if fits_url not in url_exists_cache:
+            url_exists_cache[fits_url] = int(check_url_exists(fits_url))
+        has_ql_movie.append(url_exists_cache[movie_url])
+        has_fits.append(url_exists_cache[fits_url])
 
         filename1 = os.path.basename(file_wiki)
         depec_file.append(filename1)
@@ -637,8 +852,9 @@ def main():
             Fpk_XP_7GHz.append('NA')
             Fpk_XP_11GHz.append('NA')
             Fpk_XP_15GHz.append('NA')
-            Fpk_XP_totGHz.append('NA')
+            Fpk_XP.append('NA')
             freq_at_Fpk_XP.append('NA')
+            Fpk_over_10sfu.append('default')
             print('no data for:', file_wiki)
             continue
 
@@ -709,16 +925,39 @@ def main():
             ##=========================tpeak
             tpk_tot_ind.append(np.argmax(flux_array))
 
-        time_st_mad = time_spec[int(np.round(np.median(np.array(tst_tot_ind))))]
-        time_ed_mad = time_spec[int(np.round(np.median(np.array(ted_tot_ind))))]
+        def _safe_median_index(indices, fallback_idx, upper_bound):
+            arr = np.asarray(indices, dtype=float)
+            arr = arr[np.isfinite(arr)]
+            if arr.size == 0:
+                idx = int(fallback_idx)
+            else:
+                idx = int(np.round(np.median(arr)))
+            return max(0, min(idx, upper_bound - 1))
 
-        time_st_thrd = time_spec[int(np.round(np.median(np.array(tst_tot_ind_thrd))))]
-        time_ed_thrd = time_spec[int(np.round(np.median(np.array(ted_tot_ind_thrd))))]
+        n_time = len(time_spec)
+        if n_time == 0:
+            print(f"Warning: empty time axis for {file_wiki}; skipping event")
+            continue
+
+        peak_idx = _safe_median_index(tpk_tot_ind, 0, n_time)
+        default_st_idx = max(0, peak_idx - 30)
+        default_ed_idx = min(n_time - 1, peak_idx + 30)
+
+        st_mad_idx = _safe_median_index(tst_tot_ind, default_st_idx, n_time)
+        ed_mad_idx = _safe_median_index(ted_tot_ind, default_ed_idx, n_time)
+        st_thrd_idx = _safe_median_index(tst_tot_ind_thrd, st_mad_idx, n_time)
+        ed_thrd_idx = _safe_median_index(ted_tot_ind_thrd, ed_mad_idx, n_time)
+
+        time_st_mad = time_spec[st_mad_idx]
+        time_ed_mad = time_spec[ed_mad_idx]
+
+        time_st_thrd = time_spec[st_thrd_idx]
+        time_ed_thrd = time_spec[ed_thrd_idx]
 
         time_st = time_st_thrd
         time_ed = time_ed_thrd
 
-        time_pk = time_spec[int(np.median(np.array(tpk_tot_ind)))]
+        time_pk = time_spec[peak_idx]
 
         time_pk_obj = Time(time_pk, format='jd')
 
@@ -733,8 +972,9 @@ def main():
 
         # ##=========================get the peak flux at [3, 7, 11, 15] GHz
         # freq_getflux = [3., 7., 11., 15.]
-        # time_new, freq_new, spec_new = spec_rebin(time_spec.plot_date, fghz, spec, t_step=1, f_step=1, do_mean=False)
-        time_new, freq_new, spec_new = time_spec.plot_date, fghz, spec
+        spec_ = hampel_2d_(spec, win_vert=15, n_sigmas=3)
+        time_new, freq_new, spec_new = spec_rebin(time_spec.plot_date, fghz, spec_, t_step=5, f_step=10, do_mean=False)
+        #time_new, freq_new, spec_new = time_spec.plot_date, fghz, spec
 
         def get_flux_pk(flux_tmp):
             from scipy.signal import medfilt
@@ -748,25 +988,42 @@ def main():
             # print("Fpk before and after get_flux_pk: ", np.nanmax(flux_tmp), Fpk_tmp)
             return Fpk_tmp
 
-        ind = np.argmin(np.abs(freq_new - 3.))
-        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
-        Fpk_XP_3GHz.append("{:.1f}".format(Fpk_tmp))
+        fpk_exceeds_10sfu = False
+        peak_candidates = []
 
-        ind = np.argmin(np.abs(freq_new - 7.))
-        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
-        Fpk_XP_7GHz.append("{:.1f}".format(Fpk_tmp))
+        for freq_target in range(2, 16):
+            ind = np.argmin(np.abs(freq_new - float(freq_target)))
+            Fpk_tmp = get_flux_pk(spec_new[ind, :])
+            peak_candidates.append((float(Fpk_tmp), float(freq_new[ind])))
 
-        ind = np.argmin(np.abs(freq_new - 11.))
-        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
-        Fpk_XP_11GHz.append("{:.1f}".format(Fpk_tmp))
+            if freq_target == 3:
+                Fpk_XP_3GHz.append("{:.1f}".format(Fpk_tmp))
+            elif freq_target == 7:
+                Fpk_XP_7GHz.append("{:.1f}".format(Fpk_tmp))
+            elif freq_target == 11:
+                Fpk_XP_11GHz.append("{:.1f}".format(Fpk_tmp))
+            elif freq_target == 15:
+                Fpk_XP_15GHz.append("{:.1f}".format(Fpk_tmp))
 
-        ind = np.argmin(np.abs(freq_new - 15.))
-        Fpk_tmp = get_flux_pk(spec_new[ind, :])#np.nanmax(spec_new[ind, :])
-        Fpk_XP_15GHz.append("{:.1f}".format(Fpk_tmp))
+        peaks_over_10 = [item for item in peak_candidates if item[0] > 10]
+        sorted_candidates = sorted(peak_candidates, key=lambda item: item[0], reverse=True)
 
-        Fpk_XP_totGHz.append("{:.1f}".format(np.nanmax(spec_new)))
-        indf, indt = np.where(spec_new == np.nanmax(spec_new))
-        freq_at_Fpk_XP.append(np.around(freq_new[indf[0]], 2))
+        if len(peaks_over_10) >= 1:
+            fpk_exceeds_10sfu = True
+            Fpk_max, Fq_max = sorted_candidates[0]
+        #elif len(peaks_over_10) == 1 and len(sorted_candidates) > 1:
+        #    Fpk_max, Fq_max = sorted_candidates[1]
+        else:
+            Fpk_max, Fq_max = sorted_candidates[0]
+
+        print(Fpk_max)
+        Fpk_XP.append("{:.1f}".format(Fpk_max))
+        freq_at_Fpk_XP.append(int(Fq_max))
+
+        if fpk_exceeds_10sfu:
+            Fpk_over_10sfu.append("blue")
+        else:
+            Fpk_over_10sfu.append("yellow")
 
 
         # #####==================================================plot the dynamic spectrum and flux curves
@@ -943,8 +1200,11 @@ def main():
         'Fpk_XP_7GHz': Fpk_XP_7GHz,
         'Fpk_XP_11GHz': Fpk_XP_11GHz,
         'Fpk_XP_15GHz': Fpk_XP_15GHz,
-        'Fpk_XP_totGHz': Fpk_XP_totGHz,
-        'freq_at_Fpk_XP': freq_at_Fpk_XP
+        'Fpk_XP': Fpk_XP,
+        'freq_at_Fpk_XP': freq_at_Fpk_XP,
+        'Fpk_over_10sfu': Fpk_over_10sfu,
+        'has_ql_movie': has_ql_movie,
+        'has_fits': has_fits
     }
 
     # df = pd.DataFrame(data_csv)
@@ -960,6 +1220,14 @@ def main():
     df = pd.read_csv(updated_csv)
     # Create a new DataFrame from data_csv
     new_data_df = pd.DataFrame(data_csv)
+
+    print("len EO_tpeak", len(tpk_spec_wiki))
+    print("len Fpk_XP_3GHz", len(Fpk_XP_3GHz))
+    print("len Fpk_XP_11GHz", len(Fpk_XP_11GHz))
+    print("len Fpk_over_10sfu", len(Fpk_over_10sfu))
+    print("len has_ql_movie", len(has_ql_movie))
+    print("len has_fits", len(has_fits))
+
     # Check if the lengths match; if not, raise an error
     if len(df) != len(new_data_df):
         raise ValueError("Error: The lengths of the original DataFrame and new data do not match.")
@@ -983,6 +1251,7 @@ def main():
     cursor = connection.cursor()
     cursor.execute("SELECT Flare_ID FROM EOVSA_flare_list_wiki_tb")
     flare_id_exist = cursor.fetchall()
+    flare_id_exist_set = {int(row[0]) for row in flare_id_exist}
 
     cursor.close()
     connection.close()
@@ -994,6 +1263,20 @@ def main():
 
     cursor = cnxn.cursor()
     table = 'EOVSA_flare_list_wiki_tb'
+    cursor.execute(f"SHOW COLUMNS FROM {table}")
+    existing_columns = {row[0] for row in cursor.fetchall()}
+    if 'has_ql_movie' not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN has_ql_movie TINYINT(1) NOT NULL DEFAULT 0")
+    if 'has_fits' not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN has_fits TINYINT(1) NOT NULL DEFAULT 0")
+
+    if 'Fpk_over_10sfu' not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN Fpk_over_10sfu VARCHAR(20)")
+    if 'Fpk_XP' not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN Fpk_XP VARCHAR(20)")
+
+    if 'freq_at_Fpk_XP' not in existing_columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN freq_at_Fpk_XP VARCHAR(20)")
 
     # Write to the database (add records)
     # Assume a database that mirrors the .csv file (first two lines below):
@@ -1001,12 +1284,14 @@ def main():
     #    20190415193100,2019-04-15,19:31:00,B3.3,2019-04-15 19:30:04,2019-04-15 19:32:21,2019-04-15 19:33:10,519.1,152.3
     # The Flare_ID is automatic (just incremented from 1), so is not explicitly written.  Also, separating Date and Time doesn't make sense, so combine into a single Date:
 
-    columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file', 'depec_img', \
-                'Fpk_XP_3GHz', 'Fpk_XP_7GHz', 'Fpk_XP_11GHz', 'Fpk_XP_15GHz']
+    #columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', 'depec_file', 'depec_img', \
+    #            'Fpk_XP_3GHz', 'Fpk_XP_7GHz', 'Fpk_XP_11GHz', 'Fpk_XP_15GHz']
 
     columns = ['Flare_ID', 'Flare_class', 'EO_tstart', 'EO_tpeak', 'EO_tend', \
-                'depec_datafile_TP', 'depec_imgfile_TP', 'depec_datafile_XP', 'depec_imgfile_XP', \
-                'Fpk_XP_3GHz', 'Fpk_XP_7GHz', 'Fpk_XP_11GHz', 'Fpk_XP_15GHz']
+            'depec_datafile_TP', 'depec_imgfile_TP', 'depec_datafile_XP', 'depec_imgfile_XP', \
+            'Fpk_XP_3GHz', 'Fpk_XP_7GHz', 'Fpk_XP_11GHz', 'Fpk_XP_15GHz', \
+            'Fpk_XP', 'freq_at_Fpk_XP', 'Fpk_over_10sfu', 'has_ql_movie', 'has_fits']
+
 
 
     values = []
@@ -1029,19 +1314,48 @@ def main():
     Fpk_XP_7GHz = df['Fpk_XP_7GHz']
     Fpk_XP_11GHz = df['Fpk_XP_11GHz']
     Fpk_XP_15GHz = df['Fpk_XP_15GHz']
+    Fpk_over_10sfu = df['Fpk_over_10sfu']
+    Fpk_XP = df['Fpk_XP']
+    freq_at_Fpk_XP = df['freq_at_Fpk_XP']
+    has_ql_movie = df['has_ql_movie'] if 'has_ql_movie' in df.columns else pd.Series([0] * len(df))
+    has_fits = df['has_fits'] if 'has_fits' in df.columns else pd.Series([0] * len(df))
 
     ##=========================
     for i in range(len(flare_id)):
-        if not any(int(flare_id[i]) == existing_flare_id[0] for existing_flare_id in flare_id_exist):
-            date = Time(dates[i] + ' ' + times[i]).jd
-            # newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd, EO_xcen[i], EO_ycen[i], depec_file[i]]
-            newlist = [int(flare_id[i]), GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd, 
-                       str(depec_datafile_TP[i]), str(depec_imgfile_TP[i]), str(depec_datafile_XP[i]), str(depec_imgfile_XP[i]),
-                       Fpk_XP_3GHz[i], Fpk_XP_7GHz[i], Fpk_XP_11GHz[i], Fpk_XP_15GHz[i]]
-            values.append(newlist)
-            print("EOVSA_flare_list_wiki_tb Update for ", int(flare_id[i]))
+        flare_id_int = int(flare_id[i])
+        payload = [
+            flare_id_int, GOES_class[i], Time(EO_tstart[i]).jd, Time(EO_tpeak[i]).jd, Time(EO_tend[i]).jd,
+            str(depec_datafile_TP[i]), str(depec_imgfile_TP[i]), str(depec_datafile_XP[i]), str(depec_imgfile_XP[i]),
+            Fpk_XP_3GHz[i], Fpk_XP_7GHz[i], Fpk_XP_11GHz[i], Fpk_XP_15GHz[i],Fpk_XP[i], freq_at_Fpk_XP[i],
+            str(Fpk_over_10sfu[i]),
+            int(has_ql_movie[i]) if not pd.isna(has_ql_movie[i]) else 0,
+            int(has_fits[i]) if not pd.isna(has_fits[i]) else 0
+        ]
 
-    values = [[None if pd.isna(val) else val for val in sublist] for sublist in values]
+        payload = [_to_python_scalar(val) for val in payload]
+
+        if flare_id_int not in flare_id_exist_set:
+            values.append(payload)
+            print("EOVSA_flare_list_wiki_tb Insert for ", flare_id_int)
+            continue
+
+        # Existing flare rows are updated in place to backfill fields that may have
+        # been missing in earlier parser runs.
+        update_cols = []
+        update_vals = []
+        for col_name, col_val in zip(columns[1:], payload[1:]):
+            if col_val is None:
+                continue
+            if isinstance(col_val, str) and col_val.strip() == '':
+                continue
+            update_cols.append(f"{col_name} = %s")
+            update_vals.append(col_val)
+
+        if update_cols:
+            update_query = f"UPDATE {table} SET " + ', '.join(update_cols) + " WHERE Flare_ID = %s"
+            update_vals.append(flare_id_int)
+            cursor.execute(update_query, tuple(update_vals))
+            print("EOVSA_flare_list_wiki_tb Refresh for ", flare_id_int)
 
     put_query = 'insert ignore into ' + table + ' (' + ','.join(columns) + ') values (' + ('%s,' * len(columns))[
                                                                                           :-1] + ')'
@@ -1081,7 +1395,7 @@ def main():
                 time = np.array(eospecfits[2].data['TIME'])
                 freq = np.array(eospecfits[1].data['FGHZ'])
                 spec = eospecfits[0].data
-            # time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=False)
+            #time_new, freq_new, spec_new = spec_rebin(time, freq, spec, t_step=1, f_step=1, do_mean=False)
             time_new, freq_new, spec_new = time, freq, spec
             freq_plt = [3, 7, 11, 15]
             freq_QL = np.zeros(len(freq_plt))
