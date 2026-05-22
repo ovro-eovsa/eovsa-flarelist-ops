@@ -634,6 +634,70 @@ def hampel_2d_(data, win_vert=15, win_horiz=15, n_sigmas=3):
 
     return tmp
 
+def _normalize_time(text):
+    raw = (text or "").strip().replace("UTC", "").replace("UT", "").strip()
+    if re.match(r"^\d{2}:\d{2}$", raw):
+        return f"{raw}:00"
+    return raw
+
+def _flare_id_from_row(date_text, time_text):
+    date_clean = (date_text or "").strip().replace("/", "-")
+    time_clean = _normalize_time(time_text)
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            dt = datetime.strptime(f"{date_clean} {time_clean}", fmt)
+            return dt.strftime("%Y%m%d%H%M%S")
+        except ValueError:
+            continue
+    return None
+
+def check_wiki_fits_link_by_flareid(flare_id, timeout=10):
+    flare_id = str(flare_id).strip()
+    if not re.match(r"^\d{14}$", flare_id):
+        raise ValueError("flare_id must be 14 digits, e.g. 20260118175000")
+
+    year = flare_id[:4]
+    wiki_url = f"https://ovsa.njit.edu/wiki/index.php/{year}"
+    response = requests.get(wiki_url, timeout=timeout)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    for table in soup.find_all("table", {"class": "wikitable"}):
+        header_row = table.find("tr")
+        if not header_row:
+            continue
+
+        headers = [th.get_text(" ", strip=True) for th in header_row.find_all(["th", "td"])]
+        target_col_indices = [i for i, h in enumerate(headers) if "eovsa movies" in h.lower()]
+        if not target_col_indices:
+            continue
+
+        for row in table.find_all("tr")[1:]:
+            cells = row.find_all("td")
+            if len(cells) < 2:
+                continue
+
+            row_flare_id = _flare_id_from_row(
+                cells[0].get_text(" ", strip=True),
+                cells[1].get_text(" ", strip=True),
+            )
+            if row_flare_id != flare_id:
+                continue
+
+            for col_idx in target_col_indices:
+                if len(cells) <= col_idx:
+                    continue
+                target_cell = cells[col_idx]
+                for link in target_cell.find_all("a", href=True):
+                    href = link.get("href", "")
+                    label = link.get_text(" ", strip=True)
+                    if "fits" in href.lower() or "fits" in label.lower():
+                        return 1
+            return 0
+
+    return 0
+
+
 ##=========================
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Fetch flarelist data from wiki and write mySQL.',
@@ -813,7 +877,8 @@ def main():
         if movie_url not in url_exists_cache:
             url_exists_cache[movie_url] = int(check_url_exists(movie_url))
         if fits_url not in url_exists_cache:
-            url_exists_cache[fits_url] = int(check_url_exists(fits_url))
+            #url_exists_cache[fits_url] = int(check_url_exists(fits_url))
+            url_exists_cache[fits_url] = check_wiki_fits_link_by_flareid(flare_id_str)
         has_ql_movie.append(url_exists_cache[movie_url])
         has_fits.append(url_exists_cache[fits_url])
 
